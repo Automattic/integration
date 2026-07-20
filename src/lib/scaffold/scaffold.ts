@@ -11,11 +11,11 @@
 
 import {
 	existsSync,
+	lstatSync,
 	readdirSync,
 	readFileSync,
 	renameSync,
 	rmSync,
-	statSync,
 	writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
@@ -165,7 +165,14 @@ function listFiles( root: string ): string[] {
 				continue;
 			}
 			const full = join( dir, entry );
-			if ( statSync( full ).isDirectory() ) {
+			// lstat (not stat) so a symlink is never followed — a symlinked
+			// directory can't send the walk into a cycle, and we don't rewrite
+			// through links either.
+			const stats = lstatSync( full );
+			if ( stats.isSymbolicLink() ) {
+				continue;
+			}
+			if ( stats.isDirectory() ) {
 				walk( full );
 			} else {
 				found.push( full );
