@@ -428,17 +428,36 @@ function checkValidateIntegrationScript( ctx: Context ): CheckResult {
 		title: '`composer run validate-integration` exists',
 	};
 	const scripts = ctx.composer?.scripts;
-	if ( scripts && Object.hasOwn( scripts, 'validate-integration' ) ) {
+	if ( ! scripts || ! Object.hasOwn( scripts, 'validate-integration' ) ) {
 		return {
 			...base,
-			status: 'pass',
-			message: 'composer.json defines a "validate-integration" script.',
+			status: 'fail',
+			message: 'composer.json has no "validate-integration" script.',
 		};
 	}
+
+	// Existence alone isn't enough: the checklist wants the script to actually run
+	// the validator. We can't assert the real VIP validator is invoked — it's a
+	// documented placeholder until VIP publishes it — but we can reject a no-op
+	// stub like `"validate-integration": "echo ok"` that satisfies the key while
+	// running nothing, the same no-op hole guarded against in Rule 2.
+	const commands = realCommands( resolveComposerScript( scripts, 'validate-integration' ) );
+	if ( commands.length === 0 ) {
+		return {
+			...base,
+			status: 'fail',
+			message: 'The "validate-integration" script runs no real command (only a no-op like echo).',
+		};
+	}
+
 	return {
 		...base,
-		status: 'fail',
-		message: 'composer.json has no "validate-integration" script.',
+		status: 'pass',
+		message: 'composer.json defines a "validate-integration" script.',
+		details: [
+			`Resolved commands: ${ commands.join( ' • ' ) }`,
+			'Static check: it confirms a real command is wired, not that the VIP validator runs (the validator is a placeholder until VIP publishes it).',
+		],
 	};
 }
 

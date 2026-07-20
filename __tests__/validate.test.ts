@@ -220,6 +220,44 @@ describe( 'validateIntegration', () => {
 		expect( statusById( root )[ 'composer-test' ] ).toBe( 'fail' );
 	} );
 
+	it( 'fails rule 3 when validate-integration is a no-op stub', () => {
+		const root = join( dir, 'validate-noop' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		writeFileSync(
+			join( root, 'composer.json' ),
+			JSON.stringify( {
+				type: 'wordpress-plugin',
+				autoload: { classmap: [ 'inc/' ] },
+				scripts: {
+					test: [ 'phpunit', 'playwright test' ],
+					'validate-integration': 'echo ok',
+				},
+			} )
+		);
+
+		expect( statusById( root )[ 'validate-integration-script' ] ).toBe( 'fail' );
+	} );
+
+	it( 'passes rule 3 when validate-integration runs a real command', () => {
+		const root = join( dir, 'validate-real' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		writeFileSync(
+			join( root, 'composer.json' ),
+			JSON.stringify( {
+				type: 'wordpress-plugin',
+				autoload: { classmap: [ 'inc/' ] },
+				scripts: {
+					test: [ 'phpunit', 'playwright test' ],
+					'validate-integration': '@php bin/validate-integration.php',
+				},
+			} )
+		);
+
+		expect( statusById( root )[ 'validate-integration-script' ] ).toBe( 'pass' );
+	} );
+
 	it( 'fails rule 7 when compatibility is only prose, with no CI matrix', () => {
 		const root = join( dir, 'no-ci' );
 		mkdirSync( join( root, 'docs' ), { recursive: true } );
