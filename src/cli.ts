@@ -32,7 +32,9 @@ export function run( argv: string[] = process.argv ): void {
 	program
 		.name( 'a8c-integration' )
 		.description( 'Scaffold and validate WordPress VIP Integration Center add-ons.' )
-		.version( version(), '-v, --version' );
+		.version( version(), '-v, --version' )
+		// Drop the built-in `help <command>` subcommand — `<command> --help` covers it.
+		.helpCommand( false );
 
 	program
 		.command( 'init' )
