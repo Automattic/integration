@@ -92,7 +92,7 @@ export async function initCommand( opts: InitOptions = {} ): Promise< void > {
 		throw new Error( `Target directory is not empty: ${ target }` );
 	}
 
-	console.log( gray( `Laying down the VIP Starter Kit into ${ target } …` ) );
+	console.log( gray( `Laying down the VIP Starter Kit into ${ target }` ) );
 	laySkeleton( target );
 
 	const { entryFile, prefix } = scaffoldTree( target, vendor, name );
