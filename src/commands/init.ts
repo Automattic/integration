@@ -80,7 +80,7 @@ function laySkeleton( target: string ): void {
 }
 
 export async function initCommand( opts: InitOptions = {} ): Promise< void > {
-	const vendor = await resolveInput( 'Vendor name (e.g. "Acme")', opts.vendor );
+	const vendor = await resolveInput( 'Vendor name (e.g. "Wordpress")', opts.vendor );
 	const name = await resolveInput( 'Integration name (e.g. "Content Sync")', opts.name );
 
 	// Validate the names before touching the filesystem, so bad input fails fast
