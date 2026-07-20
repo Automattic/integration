@@ -116,6 +116,7 @@ export async function initCommand( opts: InitOptions = {} ): Promise< void > {
 	for ( const step of [
 		`cd ${ target }`,
 		'composer install && npm install',
+		'Run it locally: vip dev-env create && vip dev-env start',
 		'Edit the integration, then run: a8c-integration validate',
 	] ) {
 		console.log( `  ${ cyan( '→' ) } ${ step }` );
