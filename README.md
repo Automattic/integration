@@ -1,3 +1,70 @@
-# integration
+# a8c-integration
 
-WIP
+A CLI for building **WordPress VIP Integration Center** add-ons. It does two things:
+
+- **`a8c-integration init`** — scaffold a new integration from the [VIP Integrations Starter Kit](https://github.com/Automattic/vip-integrations-starter-kit), with the example prefix set already rewritten to your names.
+- **`a8c-integration validate`** — run the integration conformance checker locally and in CI, so you get an objective _conformant / not-conformant_ answer before you submit.
+
+It is a standalone home for the checker that used to live in `vip-cli`, decoupled so the Integration Center can extend to other parts of Automattic (.com / a4a).
+
+## Install
+
+```bash
+npm install -g @automattic/a8c-integration
+```
+
+Or run without installing:
+
+```bash
+npx @automattic/a8c-integration validate
+```
+
+Requires Node.js 20+.
+
+## Usage
+
+### Start a new integration
+
+```bash
+a8c-integration init
+```
+
+Interactive — it asks for your **vendor name** and **integration name**, always builds from the canonical [VIP Integrations Starter Kit](https://github.com/Automattic/vip-integrations-starter-kit) (its default branch, no git history pulled), rewrites the example prefix set to your names, renames the entry file, and starts a fresh git history. You can also pass the answers as flags:
+
+```bash
+a8c-integration init --vendor "Acme" --name "Content Sync"
+```
+
+| Flag                | Description                                          |
+| ------------------- | ---------------------------------------------------- |
+| `--vendor <vendor>` | Vendor name, e.g. `"My Vendor"`.                     |
+| `--name <name>`     | Integration name, e.g. `"Content Sync"`.             |
+| `--dir <dir>`       | Target directory (defaults to the integration slug). |
+
+The Starter Kit source is not configurable — `init` always uses the official VIP repo.
+
+When it finishes:
+
+```bash
+cd content-sync
+composer install && npm install
+# edit your integration, then:
+a8c-integration validate
+```
+
+### Validate an integration
+
+```bash
+a8c-integration validate               # checks the current directory
+a8c-integration validate ./my-plugin   # checks a given directory
+a8c-integration validate --format json # machine-readable output for CI
+```
+
+The checker runs nine static conformance rules and prints a per-rule report. It exits `1` when the integration is **not conformant** (any rule failed), so it gates CI. Warnings do not break conformance. Two items — the plugin/platform config-schema match and the security review — are surfaced as _human review required_ rather than automated pass/fail, because they cannot be checked statically.
+
+## Documentation
+
+- [Setup](docs/setup.md) — install, build, and run from source.
+- [Architecture](docs/architecture.md) — how the CLI and the checker are put together.
+- [Testing](docs/testing.md) — how to run and extend the test suite.
+- [Releasing](docs/releasing.md) — how to cut and publish an npm release.
