@@ -95,7 +95,7 @@ export async function initCommand( opts: InitOptions = {} ): Promise< void > {
 	console.log( gray( `Laying down the VIP Starter Kit into ${ target } …` ) );
 	laySkeleton( target );
 
-	const { changed, entryFile, prefix } = scaffoldTree( target, vendor, name );
+	const { entryFile, prefix } = scaffoldTree( target, vendor, name );
 
 	// Give the fresh project its own clean git history.
 	try {
@@ -107,7 +107,7 @@ export async function initCommand( opts: InitOptions = {} ): Promise< void > {
 	console.log( green( `\n✓ Created ${ prefix.namePascal } integration at ${ target }` ) );
 	console.log(
 		gray(
-			`  Rewrote ${ changed } file(s) — slug=${ prefix.nameKebab }, namespace=${ prefix.vendorPascal }\\${ prefix.namePascal }, config=${ prefix.configConstant }` +
+			`  slug=${ prefix.nameKebab }, namespace=${ prefix.vendorPascal }\\${ prefix.namePascal }, config=${ prefix.configConstant }` +
 				( entryFile ? `, entry=${ entryFile }` : '' )
 		)
 	);
