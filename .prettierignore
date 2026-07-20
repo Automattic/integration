@@ -1,0 +1,4 @@
+dist/
+coverage/
+pnpm-lock.yaml
+bin/a8c-integration

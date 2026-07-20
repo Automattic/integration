@@ -1,0 +1,70 @@
+{
+  "name": "@automattic/a8c-integration",
+  "version": "0.1.0",
+  "description": "CLI to scaffold and validate WordPress VIP Integration Center add-ons.",
+  "keywords": [
+    "automattic",
+    "wordpress-vip",
+    "integration",
+    "integration-center",
+    "cli",
+    "conformance"
+  ],
+  "homepage": "https://github.com/Automattic/integration#readme",
+  "bugs": {
+    "url": "https://github.com/Automattic/integration/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Automattic/integration.git"
+  },
+  "author": "Automattic Inc.",
+  "license": "MIT",
+  "bin": {
+    "a8c-integration": "bin/a8c-integration"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "README.md",
+    "docs"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "jest",
+    "release:prepare": "node ./scripts/prepare-release.mjs",
+    "prepublishOnly": "pnpm run clean && pnpm run build"
+  },
+  "dependencies": {
+    "commander": "^14.0.3"
+  },
+  "devDependencies": {
+    "@automattic/eslint-plugin-wpvip": "^1.2.1",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^22.0.0",
+    "eslint": "^9.39.4",
+    "jest": "^30.0.0",
+    "prettier": "npm:wp-prettier@3.0.3",
+    "ts-jest": "^29.2.0",
+    "typescript": "^5.6.0"
+  },
+  "packageManager": "pnpm@10.14.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "unrs-resolver"
+    ]
+  }
+}
