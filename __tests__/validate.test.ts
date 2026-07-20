@@ -202,6 +202,24 @@ describe( 'validateIntegration', () => {
 		expect( statusById( root )[ 'composer-test' ] ).toBe( 'fail' );
 	} );
 
+	it( 'does not let an echo-ed npm delegation smuggle in an e2e pass for rule 2', () => {
+		// `echo npm test` is a no-op, so even though package.json test is a real
+		// `playwright test`, it must not be expanded into a passing e2e run.
+		const root = join( dir, 'echo-delegation' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		writeFileSync(
+			join( root, 'composer.json' ),
+			JSON.stringify( {
+				type: 'wordpress-plugin',
+				autoload: { classmap: [ 'inc/' ] },
+				scripts: { test: [ 'phpunit', 'echo npm test' ], 'validate-integration': 'x' },
+			} )
+		);
+
+		expect( statusById( root )[ 'composer-test' ] ).toBe( 'fail' );
+	} );
+
 	it( 'fails rule 7 when compatibility is only prose, with no CI matrix', () => {
 		const root = join( dir, 'no-ci' );
 		mkdirSync( join( root, 'docs' ), { recursive: true } );

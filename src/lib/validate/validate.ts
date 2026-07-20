@@ -380,13 +380,17 @@ function checkComposerTest( ctx: Context ): CheckResult {
 		return { ...base, status: 'fail', message: 'composer.json has no "test" script.' };
 	}
 
-	// Resolve @script references, then follow any npm delegation into package.json,
-	// then drop no-op (echo/comment) commands so the check reflects what runs.
-	const resolved = expandNpmDelegations(
-		resolveComposerScript( scripts, 'test' ),
-		ctx.packageScripts
+	// Resolve @script references, then drop no-op (echo/comment) commands *before*
+	// following npm delegations — otherwise a fake `echo npm test` would expand
+	// into the real `npm test` body and smuggle a passing e2e run past the filter.
+	// Filter again after expansion in case a delegated body is itself a no-op.
+	const commands = realCommands(
+		expandNpmDelegations(
+			realCommands( resolveComposerScript( scripts, 'test' ) ),
+			ctx.packageScripts
+		)
 	);
-	const combined = realCommands( resolved ).join( ' • ' );
+	const combined = commands.join( ' • ' );
 	const hasUnit = /\bphpunit\b/i.test( combined );
 	const hasE2e = /\b(playwright|cypress|codeception|puppeteer)\b/i.test( combined );
 
@@ -638,7 +642,12 @@ function checkBuildTestCommandsDocumented( ctx: Context ): CheckResult {
 		rule: 8,
 		title: 'Build and test commands are documented',
 	};
-	const hasTest = /composer (run )?test|phpunit|playwright test/i.test( ctx.docsText );
+	// Keep the e2e runner vocabulary aligned with Rule 2 so docs that use a
+	// different runner (Cypress, Codeception, Puppeteer) aren't dinged here.
+	const hasTest =
+		/composer (run )?test|phpunit|\b(playwright|cypress|codeception|puppeteer)\b/i.test(
+			ctx.docsText
+		);
 	const hasBuild = /npm run build|npm ci|composer install|npm install/i.test( ctx.docsText );
 
 	if ( hasTest && hasBuild ) {
