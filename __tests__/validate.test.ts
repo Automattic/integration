@@ -220,6 +220,27 @@ describe( 'validateIntegration', () => {
 		expect( statusById( root )[ 'composer-test' ] ).toBe( 'fail' );
 	} );
 
+	it( 'passes rule 2 when test commands are prefixed with a banner echo', () => {
+		const root = join( dir, 'banner-tests' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		writeFileSync(
+			join( root, 'composer.json' ),
+			JSON.stringify( {
+				type: 'wordpress-plugin',
+				autoload: { classmap: [ 'inc/' ] },
+				scripts: {
+					test: [ '@test:unit', '@test:e2e' ],
+					'test:unit': 'echo "Running PHPUnit" && phpunit',
+					'test:e2e': 'echo "Running e2e" && playwright test',
+					'validate-integration': 'x',
+				},
+			} )
+		);
+
+		expect( statusById( root )[ 'composer-test' ] ).toBe( 'pass' );
+	} );
+
 	it( 'fails rule 3 when validate-integration is a no-op stub', () => {
 		const root = join( dir, 'validate-noop' );
 		mkdirSync( root, { recursive: true } );

@@ -293,9 +293,17 @@ function expandNpmDelegations(
 	return expanded;
 }
 
-/** Drop no-op commands (echo/comment/true) that do not actually run anything. */
+/**
+ * Drop no-op commands (echo/comment/true) that do not actually run anything.
+ * Each entry is split on shell separators first, so a real command chained after
+ * a banner — `echo "Running tests" && phpunit` — keeps its `phpunit` segment
+ * instead of the whole entry being discarded because it starts with `echo`.
+ */
 function realCommands( commands: string[] ): string[] {
-	return commands.filter( cmd => ! /^(echo|:|true|#)\b/.test( cmd.trim() ) );
+	return commands
+		.flatMap( cmd => cmd.split( /\s*(?:&&|\|\||;|\|)\s*/ ) )
+		.map( segment => segment.trim() )
+		.filter( segment => segment !== '' && ! /^(echo|:|true|#)\b/.test( segment ) );
 }
 
 /** Fenced code blocks (```...```) that mention the given needle. */
