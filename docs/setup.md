@@ -54,7 +54,7 @@ pnpm format          # Prettier (wp-prettier) — write; `pnpm format:check` to 
 run clones it from GitHub:
 
 ```bash
-node bin/a8c-integration init --vendor "Wordpress" --name "Content Sync" --dir /tmp/content-sync
+node bin/a8c-integration init --vendor "WordPress" --name "Content Sync" --dir /tmp/content-sync
 node bin/a8c-integration validate /tmp/content-sync
 ```
 
@@ -67,7 +67,7 @@ variable:
 
 ```bash
 A8C_STARTER_KIT_SOURCE=/path/to/vip-integrations-starter-kit \
-  node bin/a8c-integration init --vendor "Wordpress" --name "Content Sync" --dir /tmp/content-sync
+  node bin/a8c-integration init --vendor "WordPress" --name "Content Sync" --dir /tmp/content-sync
 ```
 
 This override is for development only; it is not part of the public interface.

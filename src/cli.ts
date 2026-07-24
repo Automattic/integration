@@ -39,7 +39,7 @@ export function run( argv: string[] = process.argv ): void {
 	program
 		.command( 'init' )
 		.description( 'Start a new integration by scaffolding from the VIP Integrations Starter Kit.' )
-		.option( '--vendor <vendor>', 'Vendor name (e.g. "Wordpress").' )
+		.option( '--vendor <vendor>', 'Vendor name (e.g. "WordPress").' )
 		.option( '--name <name>', 'Integration name (e.g. "Content Sync").' )
 		.option( '--dir <dir>', 'Target directory (defaults to the integration slug).' )
 		.action( async ( opts: InitOptions ) => {
