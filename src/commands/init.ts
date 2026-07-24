@@ -9,12 +9,14 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 
 import { bold, cyan, gray, green } from '../lib/colors';
 import { derivePrefixSet, kebabCase, scaffoldTree } from '../lib/scaffold/scaffold';
+
+import type { PrefixSet } from '../lib/scaffold/scaffold';
 
 const STARTER_KIT_URL = 'https://github.com/Automattic/vip-integrations-starter-kit.git';
 
@@ -80,7 +82,7 @@ function laySkeleton( target: string ): void {
 }
 
 export async function initCommand( opts: InitOptions = {} ): Promise< void > {
-	const vendor = await resolveInput( 'Vendor name (e.g. "Wordpress")', opts.vendor );
+	const vendor = await resolveInput( 'Vendor name (e.g. "WordPress")', opts.vendor );
 	const name = await resolveInput( 'Integration name (e.g. "Content Sync")', opts.name );
 
 	// Validate the names before touching the filesystem, so bad input fails fast
@@ -91,17 +93,31 @@ export async function initCommand( opts: InitOptions = {} ): Promise< void > {
 	if ( ! isEmptyOrMissing( target ) ) {
 		throw new Error( `Target directory is not empty: ${ target }` );
 	}
+	const existedBefore = existsSync( target );
 
 	console.log( gray( `Laying down the VIP Starter Kit into ${ target }` ) );
-	laySkeleton( target );
 
-	const { entryFile, prefix } = scaffoldTree( target, vendor, name );
-
-	// Give the fresh project its own clean git history.
+	let entryFile: string | null;
+	let prefix: PrefixSet;
 	try {
-		execFileSync( 'git', [ 'init', '--quiet' ], { cwd: target, stdio: 'ignore' } );
-	} catch {
-		// git init is a nicety; a scaffold without it is still usable.
+		laySkeleton( target );
+		( { entryFile, prefix } = scaffoldTree( target, vendor, name ) );
+
+		// Give the fresh project its own clean git history.
+		try {
+			execFileSync( 'git', [ 'init', '--quiet' ], { cwd: target, stdio: 'ignore' } );
+		} catch {
+			// git init is a nicety; a scaffold without it is still usable.
+		}
+	} catch ( error ) {
+		// A clone that dies partway or a scaffold that throws would otherwise leave
+		// a half-populated directory that blocks the next run. Remove what we laid
+		// down, restoring the empty directory the user may have created themselves.
+		rmSync( target, { recursive: true, force: true } );
+		if ( existedBefore ) {
+			mkdirSync( target, { recursive: true } );
+		}
+		throw error;
 	}
 
 	console.log( green( `\n✓ Created ${ prefix.namePascal } integration at ${ target }` ) );
