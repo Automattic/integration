@@ -99,4 +99,8 @@ jobs:
         run: |
           set -euo pipefail
           tag_name="v$PACKAGE_VERSION"
-          gh release create "$tag_name" --target "$GITHUB_SHA" --title "$tag_name" --generate-notes
+          # Tag the tree we actually built and published — this job checks out and
+          # builds `trunk`, so tag trunk's tip. Using $GITHUB_SHA would tag the
+          # commit the workflow was dispatched from (a feature branch on a manual
+          # run), pointing the release at code that was never shipped.
+          gh release create "$tag_name" --target "$(git rev-parse HEAD)" --title "$tag_name" --generate-notes
