@@ -15,6 +15,10 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { extname, join } from 'node:path';
 
+import { MANIFEST_FILENAMES, inspectManifest } from './manifest';
+
+import type { ManifestInspection } from './manifest';
+
 export type CheckStatus = 'pass' | 'fail' | 'warn' | 'not_applicable';
 
 export interface CheckResult {
@@ -54,6 +58,7 @@ interface ComposerJson {
 	autoload?: Record< string, unknown >;
 	scripts?: Record< string, unknown >;
 	require?: Record< string, string >;
+	extra?: Record< string, unknown >;
 }
 
 interface Context {
@@ -73,6 +78,8 @@ interface Context {
 	configConstant: string | null;
 	/** Root-level plugin entry file (with a "Plugin Name:" header), if any. */
 	entryFile: string | null;
+	/** Result of reading and validating the handoff manifest at the root. */
+	manifest: ManifestInspection;
 }
 
 const SKIP_DIRS = new Set( [ 'vendor', 'node_modules', '.git', 'dist', 'coverage' ] );
@@ -224,6 +231,7 @@ function buildContext( root: string ): Context {
 		workflowsText: collectWorkflowsText( root ),
 		configConstant: detectConfigConstant( phpSource ),
 		entryFile: detectEntryFile( root ),
+		manifest: inspectManifest( root ),
 	};
 }
 
@@ -310,6 +318,45 @@ function realCommands( commands: string[] ): string[] {
 function codeBlocksMentioning( markdown: string, needle: string ): string[] {
 	const blocks = markdown.match( /```[\s\S]*?```/g ) ?? [];
 	return blocks.filter( block => block.includes( needle ) );
+}
+
+/**
+ * Whether any resolved command actually *invokes* one of the given runners.
+ * The runner must be the command being run — at the start of the segment,
+ * optionally via a package runner (npx/pnpm/yarn) or `@php`, or from a
+ * `vendor/bin/` path — not merely a substring. So `rm -rf cypress-artifacts`
+ * does not count as running Cypress.
+ */
+function invokesRunner( commands: string[], runners: string[] ): boolean {
+	const alternation = runners.join( '|' );
+	// runners are fixed alphabetic keywords, so interpolation is safe.
+	// eslint-disable-next-line security/detect-non-literal-regexp
+	const re = new RegExp(
+		String.raw`^(?:(?:npx|pnpm|yarn|bunx|@php)\s+)?(?:[\w./@-]*/)?(?:${ alternation })(?:\b|$)`,
+		'i'
+	);
+	return commands.some( command => re.test( command.trim() ) );
+}
+
+/**
+ * Concatenate the text windows around each occurrence of any needle, so a check
+ * can be scoped to the neighbourhood of the thing it cares about (a config
+ * constant, a telemetry call) instead of the whole source. Returns '' when no
+ * needle occurs.
+ */
+function windowsAround( source: string, needles: string[], radius: number ): string {
+	const parts: string[] = [];
+	for ( const needle of needles ) {
+		if ( needle === '' ) {
+			continue;
+		}
+		let from = source.indexOf( needle );
+		while ( from !== -1 ) {
+			parts.push( source.slice( Math.max( 0, from - radius ), from + needle.length + radius ) );
+			from = source.indexOf( needle, from + needle.length );
+		}
+	}
+	return parts.join( '\n' );
 }
 
 // Precondition stated out loud when the config checks are skipped: detection
@@ -399,8 +446,10 @@ function checkComposerTest( ctx: Context ): CheckResult {
 		)
 	);
 	const combined = commands.join( ' • ' );
-	const hasUnit = /\bphpunit\b/i.test( combined );
-	const hasE2e = /\b(playwright|cypress|codeception|puppeteer)\b/i.test( combined );
+	// Match the runner as the command actually invoked, not a substring — a
+	// segment like `rm -rf cypress-artifacts` must not count as running Cypress.
+	const hasUnit = invokesRunner( commands, [ 'phpunit' ] );
+	const hasE2e = invokesRunner( commands, [ 'playwright', 'cypress', 'codeception', 'puppeteer' ] );
 
 	if ( hasUnit && hasE2e ) {
 		return {
@@ -429,42 +478,53 @@ function checkComposerTest( ctx: Context ): CheckResult {
 	};
 }
 
-function checkValidateIntegrationScript( ctx: Context ): CheckResult {
+function checkHandoffManifest( ctx: Context ): CheckResult {
 	const base = {
-		id: 'validate-integration-script',
+		id: 'handoff-manifest',
 		rule: 3,
-		title: '`composer run validate-integration` exists',
+		title: 'Handoff manifest is present and complete',
 	};
-	const scripts = ctx.composer?.scripts;
-	if ( ! scripts || ! Object.hasOwn( scripts, 'validate-integration' ) ) {
+	const { manifest } = ctx;
+
+	if ( ! manifest.file ) {
 		return {
 			...base,
 			status: 'fail',
-			message: 'composer.json has no "validate-integration" script.',
+			message: `No handoff manifest found (expected ${ MANIFEST_FILENAMES.join(
+				' or '
+			) } at the integration root).`,
+			details: [
+				'VIP registers and loads the integration from this manifest alone, so it is required.',
+			],
+		};
+	}
+	if ( manifest.parseError ) {
+		return {
+			...base,
+			status: 'fail',
+			message: `${ manifest.file } could not be read as YAML: ${ manifest.parseError }.`,
 		};
 	}
 
-	// Existence alone isn't enough: the checklist wants the script to actually run
-	// the validator. We can't assert the real VIP validator is invoked — it's a
-	// documented placeholder until VIP publishes it — but we can reject a no-op
-	// stub like `"validate-integration": "echo ok"` that satisfies the key while
-	// running nothing, the same no-op hole guarded against in Rule 2.
-	const commands = realCommands( resolveComposerScript( scripts, 'validate-integration' ) );
-	if ( commands.length === 0 ) {
+	const issues = [
+		...manifest.missing.map( field => `Missing required field: ${ field }` ),
+		...manifest.problems,
+	];
+	if ( issues.length > 0 ) {
 		return {
 			...base,
 			status: 'fail',
-			message: 'The "validate-integration" script runs no real command (only a no-op like echo).',
+			message: `${ manifest.file } is incomplete — VIP cannot register the integration from it as-is.`,
+			details: issues,
 		};
 	}
 
 	return {
 		...base,
 		status: 'pass',
-		message: 'composer.json defines a "validate-integration" script.',
+		message: `${ manifest.file } declares every field VIP needs to register and load the integration.`,
 		details: [
-			`Resolved commands: ${ commands.join( ' • ' ) }`,
-			'Static check: it confirms a real command is wired, not that the VIP validator runs (the validator is a placeholder until VIP publishes it).',
+			'Static check: it confirms the required fields are present and well-formed, not that their values are correct (that is confirmed in human review).',
 		],
 	};
 }
@@ -502,6 +562,12 @@ function checkGracefulConfigHandling( ctx: Context ): CheckResult {
 		return { ...base, status: 'not_applicable', message: CONFIG_DETECTION_NOTE };
 	}
 
+	// Scope the guard search to the neighbourhood of the config constant, so a
+	// generic `is_array()` elsewhere in the plugin does not read as a guard on
+	// the config access itself. Both the constant literal and the Starter Kit's
+	// `CONSTANT_NAME` declaration anchor the window.
+	const configWindow = windowsAround( ctx.phpSource, [ ctx.configConstant, 'CONSTANT_NAME' ], 600 );
+
 	const guards = [
 		{ re: /is_ready\s*\(/, label: 'is_ready()' },
 		{ re: /missing_fields\s*\(/, label: 'missing_fields()' },
@@ -516,7 +582,7 @@ function checkGracefulConfigHandling( ctx: Context ): CheckResult {
 		{ re: /is_array\s*\(/, label: 'is_array() guard' },
 	];
 	const present = guards
-		.filter( guard => guard.re.test( ctx.phpSource ) )
+		.filter( guard => guard.re.test( configWindow ) )
 		.map( guard => guard.label );
 
 	if ( present.length > 0 ) {
@@ -569,29 +635,41 @@ function checkConfigExamplesInDocs( ctx: Context ): CheckResult {
 		};
 	}
 
-	// Distinguish a "valid" from an "incomplete" example: either the docs call
-	// it out in prose, or one example carries strictly fewer keys than another.
-	const keyCounts = blocks.map(
-		block => ( block.match( /['"][a-z0-9_]+['"]\s*=>/gi ) ?? [] ).length
-	);
-	const hasSmallerExample = Math.min( ...keyCounts ) < Math.max( ...keyCounts );
+	// Whether an example is "incomplete" (missing a required field) can't be told
+	// apart from a shorter-but-valid example by counting keys — fewer keys usually
+	// just means fewer optional settings. So require the docs to label it
+	// explicitly rather than guessing.
 	const mentionsIncomplete = /incomplete|missing (a )?required|setup in progress/i.test(
 		ctx.docsText
 	);
 
-	if ( hasSmallerExample || mentionsIncomplete ) {
+	if ( mentionsIncomplete ) {
 		return {
 			...base,
 			status: 'pass',
-			message: 'Docs include both a valid and an incomplete config example.',
+			message: 'Docs include both a valid and an explicitly labeled incomplete config example.',
 		};
 	}
 	return {
 		...base,
 		status: 'warn',
 		message:
-			'Multiple config examples are documented, but none is clearly an incomplete/missing-field example.',
+			'Multiple config examples are documented, but none is explicitly labeled as the incomplete/missing-field case. Label it (e.g. "incomplete" or "missing a required field") so the check is not guessing.',
 	};
+}
+
+/** Whether composer.json declares an approved compatibility exception under
+ * the structured `extra.vip.compatibility-exception` key. */
+function claimsCompatibilityException( composer: ComposerJson | null ): boolean {
+	const extra = composer?.extra;
+	if ( ! extra || typeof extra !== 'object' ) {
+		return false;
+	}
+	const vip = extra.vip;
+	if ( ! vip || typeof vip !== 'object' ) {
+		return false;
+	}
+	return ( vip as Record< string, unknown > )[ 'compatibility-exception' ] === 'approved';
 }
 
 function checkCompatibilityMatrix( ctx: Context ): CheckResult {
@@ -601,18 +679,17 @@ function checkCompatibilityMatrix( ctx: Context ): CheckResult {
 		title: 'Compatibility evidence covers WP 6.9/7.0 and PHP 8.2-8.5',
 	};
 	// Evidence must be a real CI matrix (.github/workflows) or an explicit,
-	// approved exception note — not a version number that happens to appear in a
-	// changelog or prose. Scanning arbitrary docs lets coincidental substrings
-	// pass, so only workflows and an explicit exception note count here.
-	if (
-		/compatibility exception|approved exception/i.test(
-			`${ ctx.workflowsText }\n${ ctx.docsText }`
-		)
-	) {
+	// structured exception flag — not a version number or phrase that happens to
+	// appear in a changelog or prose. A prose scan lets a line like "there is no
+	// approved exception on file" pass, so the exception is claimed through a
+	// dedicated composer.json field instead, and it downgrades to a warning that
+	// still needs reviewer sign-off rather than an automated clean pass.
+	if ( claimsCompatibilityException( ctx.composer ) ) {
 		return {
 			...base,
-			status: 'pass',
-			message: 'An approved compatibility exception note is documented.',
+			status: 'warn',
+			message:
+				'A compatibility exception is claimed in composer.json (extra.vip.compatibility-exception). It does not fail conformance, but a reviewer must confirm the exception.',
 		};
 	}
 
@@ -640,8 +717,16 @@ function checkCompatibilityMatrix( ctx: Context ): CheckResult {
 	if ( ! /\b7\.0\b/.test( ctx.workflowsText ) && ! wpLatest.test( ctx.workflowsText ) ) {
 		missing.push( 'WordPress 7.0' );
 	}
+	// Only count a PHP version that sits against a `php` / `php-version` key. A
+	// bare `.includes('8.4')` matches mysql:8.4, a node 18.4 matrix, or a pinned
+	// action tag, so an integration testing only 8.2 could report full coverage.
+	const phpVersions = new Set(
+		[ ...ctx.workflowsText.matchAll( /php(?:[-_]version)?['":= ]+['"]?(\d+\.\d+)/gi ) ].map(
+			match => match[ 1 ]
+		)
+	);
 	for ( const php of [ '8.2', '8.3', '8.4', '8.5' ] ) {
-		if ( ! ctx.workflowsText.includes( php ) ) {
+		if ( ! phpVersions.has( php ) ) {
 			missing.push( `PHP ${ php }` );
 		}
 	}
@@ -710,8 +795,16 @@ function checkTelemetryTracksOnly( ctx: Context ): CheckResult {
 		};
 	}
 
-	const usesVipTelemetryApi = /Automattic\\VIP\\Telemetry/.test( ctx.phpSource );
-	const guarded = /class_exists\s*\(/.test( ctx.phpSource );
+	// Scope the guard and Tracks-API detection to the neighbourhood of the
+	// telemetry calls, so an unrelated `class_exists()` elsewhere in the plugin
+	// doesn't read as a guard on the telemetry itself.
+	const telemetryWindow = windowsAround(
+		ctx.phpSource,
+		[ 'record_event', 'Telemetry', 'record_pixel' ],
+		600
+	);
+	const usesVipTelemetryApi = /Automattic\\VIP\\Telemetry/.test( telemetryWindow );
+	const guarded = /class_exists\s*\(/.test( telemetryWindow );
 	const usesStats = /Automattic\\VIP\\Stats|record_pixel|->pixel\b/.test( ctx.phpSource );
 
 	if ( usesStats ) {
@@ -777,7 +870,7 @@ export function validateIntegration( root: string ): ValidationReport {
 	const results: CheckResult[] = [
 		checkLoadsThroughStarterKit( ctx ),
 		checkComposerTest( ctx ),
-		checkValidateIntegrationScript( ctx ),
+		checkHandoffManifest( ctx ),
 		checkConfigConstantDocumented( ctx ),
 		checkGracefulConfigHandling( ctx ),
 		checkConfigExamplesInDocs( ctx ),

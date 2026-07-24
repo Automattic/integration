@@ -6,6 +6,41 @@ import { looksLikeIntegration, validateIntegration } from '../src/lib/validate/v
 
 import type { CheckStatus } from '../src/lib/validate/validate';
 
+/** A complete handoff manifest matching the conformant fixture's names. */
+function conformantManifest(): string {
+	return [
+		'manifest_version: 1',
+		'manifest_kind: vip-integration-handoff',
+		'integration:',
+		'  slug: acme-widget',
+		'  display_name: Acme Widget',
+		'  summary: Example integration used in tests.',
+		'  partner:',
+		'    name: Acme',
+		'    support_contact: support@acme.example',
+		'runtime:',
+		'  wordpress_plugin:',
+		'    folder: acme-widget',
+		'    entry_file: acme-widget.php',
+		"    php_namespace: 'Acme\\Widget'",
+		'    scope: site',
+		'runtime_config:',
+		'  constant_name: VIP_ACME_WIDGET_CONFIG',
+		'  fields:',
+		'    - key: api_base_url',
+		'      label: API base URL',
+		'      type: url',
+		'      required: true',
+		'    - key: sync_mode',
+		'      label: Sync mode',
+		'      type: enum',
+		'      required: true',
+		'      values:',
+		'        - export',
+		'        - import',
+	].join( '\n' );
+}
+
 /** Write a minimal but fully conformant integration into `root`. */
 function scaffoldConformant( root: string ): void {
 	mkdirSync( join( root, 'docs' ), { recursive: true } );
@@ -36,6 +71,8 @@ function scaffoldConformant( root: string ): void {
 		join( root, 'acme-widget.php' ),
 		`<?php\n/**\n * Plugin Name: Acme Widget\n */\nrequire_once __DIR__ . '/vendor/autoload.php';\n`
 	);
+
+	writeFileSync( join( root, 'vip-handoff.yaml' ), conformantManifest() );
 
 	writeFileSync(
 		join( root, 'inc', 'class-config.php' ),
@@ -130,7 +167,7 @@ describe( 'validateIntegration', () => {
 		expect( report.configChecksSkipped ).toBe( true );
 		expect( status[ 'loads-through-starter-kit' ] ).toBe( 'fail' );
 		expect( status[ 'composer-test' ] ).toBe( 'fail' );
-		expect( status[ 'validate-integration-script' ] ).toBe( 'fail' );
+		expect( status[ 'handoff-manifest' ] ).toBe( 'fail' );
 		expect( status[ 'compatibility-matrix' ] ).toBe( 'fail' );
 		// No config constant and no telemetry -> not applicable, not a failure.
 		expect( status[ 'config-constant-documented' ] ).toBe( 'not_applicable' );
@@ -241,8 +278,10 @@ describe( 'validateIntegration', () => {
 		expect( statusById( root )[ 'composer-test' ] ).toBe( 'pass' );
 	} );
 
-	it( 'fails rule 3 when validate-integration is a no-op stub', () => {
-		const root = join( dir, 'validate-noop' );
+	it( 'does not count a runner name inside another command as an e2e run for rule 2', () => {
+		// `rm -rf cypress-artifacts` mentions Cypress but runs no tests; it must
+		// not satisfy the e2e requirement just by containing the runner name.
+		const root = join( dir, 'e2e-substring' );
 		mkdirSync( root, { recursive: true } );
 		scaffoldConformant( root );
 		writeFileSync(
@@ -250,33 +289,61 @@ describe( 'validateIntegration', () => {
 			JSON.stringify( {
 				type: 'wordpress-plugin',
 				autoload: { classmap: [ 'inc/' ] },
-				scripts: {
-					test: [ 'phpunit', 'playwright test' ],
-					'validate-integration': 'echo ok',
-				},
+				scripts: { test: [ 'phpunit', 'rm -rf cypress-artifacts' ] },
 			} )
 		);
 
-		expect( statusById( root )[ 'validate-integration-script' ] ).toBe( 'fail' );
+		expect( statusById( root )[ 'composer-test' ] ).toBe( 'fail' );
 	} );
 
-	it( 'passes rule 3 when validate-integration runs a real command', () => {
-		const root = join( dir, 'validate-real' );
+	it( 'passes rule 3 when a complete handoff manifest is present', () => {
+		const root = join( dir, 'manifest-ok' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+
+		expect( statusById( root )[ 'handoff-manifest' ] ).toBe( 'pass' );
+	} );
+
+	it( 'fails rule 3 when the handoff manifest is missing', () => {
+		const root = join( dir, 'manifest-missing' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		rmSync( join( root, 'vip-handoff.yaml' ) );
+
+		expect( statusById( root )[ 'handoff-manifest' ] ).toBe( 'fail' );
+	} );
+
+	it( 'fails rule 3 when a required manifest field is missing', () => {
+		const root = join( dir, 'manifest-incomplete' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		// Drop runtime_config.constant_name — VIP needs it to define the config.
+		writeFileSync(
+			join( root, 'vip-handoff.yaml' ),
+			conformantManifest().replace( '  constant_name: VIP_ACME_WIDGET_CONFIG\n', '' )
+		);
+
+		const rule3 = validateIntegration( root ).results.find(
+			result => result.id === 'handoff-manifest'
+		);
+		expect( rule3?.status ).toBe( 'fail' );
+		expect( rule3?.details?.join( '\n' ) ).toMatch( /runtime_config\.constant_name/ );
+	} );
+
+	it( 'fails rule 3 when an enum config field declares no values', () => {
+		const root = join( dir, 'manifest-enum' );
 		mkdirSync( root, { recursive: true } );
 		scaffoldConformant( root );
 		writeFileSync(
-			join( root, 'composer.json' ),
-			JSON.stringify( {
-				type: 'wordpress-plugin',
-				autoload: { classmap: [ 'inc/' ] },
-				scripts: {
-					test: [ 'phpunit', 'playwright test' ],
-					'validate-integration': '@php bin/validate-integration.php',
-				},
-			} )
+			join( root, 'vip-handoff.yaml' ),
+			conformantManifest().replace( /\n {6}values:[\s\S]*$/, '' )
 		);
 
-		expect( statusById( root )[ 'validate-integration-script' ] ).toBe( 'pass' );
+		const rule3 = validateIntegration( root ).results.find(
+			result => result.id === 'handoff-manifest'
+		);
+		expect( rule3?.status ).toBe( 'fail' );
+		expect( rule3?.details?.join( '\n' ) ).toMatch( /enum/ );
 	} );
 
 	it( 'fails rule 7 when compatibility is only prose, with no CI matrix', () => {
@@ -342,6 +409,58 @@ describe( 'validateIntegration', () => {
 		);
 
 		expect( statusById( root )[ 'compatibility-matrix' ] ).toBe( 'pass' );
+	} );
+
+	it( 'does not count a non-php version token as PHP coverage for rule 7', () => {
+		const root = join( dir, 'php-scoping' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		// mysql:8.4 and a node 18.5 matrix must not be read as PHP 8.4 / 8.5.
+		writeFileSync(
+			join( root, '.github', 'workflows', 'unit-tests.yml' ),
+			[
+				'jobs:',
+				'  test:',
+				'    services:',
+				'      db:',
+				'        image: mysql:8.4',
+				'    strategy:',
+				'      matrix:',
+				'        node-version: [ 18.2, 18.5 ]',
+				'        config:',
+				"          - { wp: 6.9.x, php: '8.2' }",
+				"          - { wp: 7.0, php: '8.3' }",
+			].join( '\n' )
+		);
+
+		const rule7 = validateIntegration( root ).results.find(
+			result => result.id === 'compatibility-matrix'
+		);
+		expect( rule7?.status ).toBe( 'fail' );
+		expect( rule7?.message ).toMatch( /PHP 8\.4/ );
+		expect( rule7?.message ).toMatch( /PHP 8\.5/ );
+	} );
+
+	it( 'warns (not passes) rule 7 when a structured compatibility exception is claimed', () => {
+		const root = join( dir, 'compat-exception' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		rmSync( join( root, '.github' ), { recursive: true, force: true } );
+		writeFileSync(
+			join( root, 'composer.json' ),
+			JSON.stringify( {
+				type: 'wordpress-plugin',
+				autoload: { classmap: [ 'inc/' ] },
+				scripts: { test: [ 'phpunit', 'playwright test' ] },
+				extra: { vip: { 'compatibility-exception': 'approved' } },
+			} )
+		);
+
+		const report = validateIntegration( root );
+		const rule7 = report.results.find( result => result.id === 'compatibility-matrix' );
+		expect( rule7?.status ).toBe( 'warn' );
+		// A claimed exception is a warning, so it must not break conformance.
+		expect( report.conformant ).toBe( true );
 	} );
 
 	it( 'distinguishes a malformed composer.json from a missing one', () => {

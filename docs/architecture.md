@@ -15,6 +15,7 @@ src/
     colors.ts              Tiny ANSI helper (chalk-shaped, dependency-free)
     validate/
       validate.ts          Nine conformance checks (pure, fs-only)
+      manifest.ts          Handoff-manifest (vip-handoff.yaml) validation
       report.ts            Human and JSON rendering of a report
     scaffold/
       scaffold.ts          The Starter Kit prefix rewrite (pure, fs-only)
@@ -29,7 +30,9 @@ __tests__/                 Jest tests for validate, report, and scaffold
 
 ## The conformance checker (`lib/validate`)
 
-Checks if the integration meets the wpvip guidelines. All checks are **static** — they inspect files and config, never execute the integration. `validateIntegration(root)` builds a single `Context` (parsed `composer.json`, concatenated PHP/docs/workflow text, the detected config constant and entry file) and runs each rule against it, so the filesystem is read once. Rules return `pass` / `fail` / `warn` / `not_applicable`; only a `fail` breaks conformance. Two inherently non-static items (config-schema match, security review) are returned as human-review items.
+Checks if the integration meets the wpvip guidelines. All checks are **static** — they inspect files and config, never execute the integration. `validateIntegration(root)` builds a single `Context` (parsed `composer.json`, concatenated PHP/docs/workflow text, the detected config constant and entry file, and the parsed handoff manifest) and runs each rule against it, so the filesystem is read once. Rules return `pass` / `fail` / `warn` / `not_applicable`; only a `fail` breaks conformance. Two inherently non-static items (config-schema match, security review) are returned as human-review items.
+
+One rule validates the **handoff manifest** (`vip-handoff.yaml`) — the single file a partner fills in so VIP can register and load the integration from the manifest alone. `manifest.ts` parses it and checks that every field VIP consumes (identity, plugin runtime, and the runtime-config schema) is present and well-formed; it is a presence-and-shape check, not a check that the values are correct.
 
 ## The scaffolder (`lib/scaffold`)
 
