@@ -140,6 +140,24 @@ describe( 'scaffoldTree', () => {
 		expect( result.changed ).toBeGreaterThanOrEqual( 3 );
 	} );
 
+	it( 'leaves a binary file untouched even when it contains a token', () => {
+		const root = join( dir, 'binary' );
+		mkdirSync( root, { recursive: true } );
+		writeFileSync(
+			join( root, 'composer.json' ),
+			'{ "name": "example-vendor/example-integration" }'
+		);
+		// A binary asset (e.g. a .ico) whose bytes happen to include a token, with a
+		// NUL byte marking it as binary. Reading it as utf8 and rewriting would
+		// corrupt the untokened bytes into U+FFFD.
+		const binary = Buffer.from( [ 0x00, 0x45, 0x78, 0x00, 0xff, 0xfe ] ); // includes NUL
+		writeFileSync( join( root, 'logo.ico' ), binary );
+
+		scaffoldTree( root, 'Acme', 'Content Sync' );
+
+		expect( readFileSync( join( root, 'logo.ico' ) ).equals( binary ) ).toBe( true );
+	} );
+
 	it( 'drops the redundant Starter Kit scaffolder and its composer script', () => {
 		const root = join( dir, 'cleanup' );
 		mkdirSync( join( root, 'bin' ), { recursive: true } );

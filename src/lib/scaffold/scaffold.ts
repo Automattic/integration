@@ -209,7 +209,16 @@ export function scaffoldTree( root: string, vendor: string, name: string ): Scaf
 			continue;
 		}
 
-		const contents = readFileSync( file, 'utf8' );
+		// The extension list only covers a few image types. Any other binary the
+		// kit ships (.ico, .woff2, .ttf, .pdf) read as utf8 would have its invalid
+		// bytes replaced with U+FFFD and be written back corrupted. Sniff for a
+		// NUL byte — the reliable text/binary tell — and skip anything binary.
+		const raw = readFileSync( file );
+		if ( raw.includes( 0 ) ) {
+			continue;
+		}
+
+		const contents = raw.toString( 'utf8' );
 		const updated = rewriteContents( contents, replacements );
 		if ( updated !== contents ) {
 			writeFileSync( file, updated );
