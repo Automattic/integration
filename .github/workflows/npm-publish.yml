@@ -1,0 +1,106 @@
+name: Publish npm package
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-trunk
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish:
+    name: publish
+    runs-on: ubuntu-latest
+    environment: npm-publish
+    steps:
+      - name: Checkout trunk
+        uses: actions/checkout@v4
+        with:
+          ref: trunk
+          fetch-depth: 1
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Ensure npm supports trusted publishing
+        run: npm install -g npm@11.5.1
+
+      - name: Read package metadata
+        id: package
+        run: |
+          node <<'NODE'
+          const fs = require( 'node:fs' );
+          const pkg = JSON.parse( fs.readFileSync( 'package.json', 'utf8' ) );
+          fs.appendFileSync( process.env.GITHUB_OUTPUT, `name=${ pkg.name }\n` );
+          fs.appendFileSync( process.env.GITHUB_OUTPUT, `version=${ pkg.version }\n` );
+          NODE
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Run ESLint
+        run: pnpm lint
+
+      - name: Check formatting
+        run: pnpm format:check
+
+      - name: Check types
+        run: pnpm check-types
+
+      - name: Run tests
+        run: pnpm test
+
+      - name: Build package
+        run: pnpm build
+
+      - name: Check GitHub release does not exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE_VERSION: ${{ steps.package.outputs.version }}
+        run: |
+          set -euo pipefail
+          tag_name="v$PACKAGE_VERSION"
+          if gh release view "$tag_name" >/dev/null 2>&1; then
+            echo "::error::GitHub release $tag_name already exists."
+            exit 1
+          fi
+
+      - name: Check npm version is unpublished
+        env:
+          PACKAGE_NAME: ${{ steps.package.outputs.name }}
+          PACKAGE_VERSION: ${{ steps.package.outputs.version }}
+        run: |
+          set -euo pipefail
+          if npm view "$PACKAGE_NAME@$PACKAGE_VERSION" version >/dev/null 2>&1; then
+            echo "::error::$PACKAGE_NAME@$PACKAGE_VERSION is already published on npm."
+            exit 1
+          fi
+
+      - name: Preview npm package
+        run: npm pack --dry-run
+
+      - name: Publish to npm
+        run: npm publish --access public
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE_VERSION: ${{ steps.package.outputs.version }}
+        run: |
+          set -euo pipefail
+          tag_name="v$PACKAGE_VERSION"
+          # Tag the tree we actually built and published — this job checks out and
+          # builds `trunk`, so tag trunk's tip. Using $GITHUB_SHA would tag the
+          # commit the workflow was dispatched from (a feature branch on a manual
+          # run), pointing the release at code that was never shipped.
+          gh release create "$tag_name" --target "$(git rev-parse HEAD)" --title "$tag_name" --generate-notes
