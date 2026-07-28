@@ -87,10 +87,16 @@ function describeError( error: ErrorObject ): string {
 	}
 }
 
-/** Collect dotted paths whose string value contains the init placeholder. */
+// The sentinel as a whole token, so a real value that merely embeds it as part
+// of a longer word (`REPLACE_ME_TOKEN`) isn't flagged as an unfilled placeholder.
+// MANIFEST_PLACEHOLDER is a fixed alphabetic sentinel, so interpolation is safe.
+// eslint-disable-next-line security/detect-non-literal-regexp
+const PLACEHOLDER_TOKEN = new RegExp( String.raw`\b${ MANIFEST_PLACEHOLDER }\b` );
+
+/** Collect dotted paths whose string value still holds the init placeholder. */
 function collectPlaceholders( value: unknown, path: string, out: string[] ): void {
 	if ( typeof value === 'string' ) {
-		if ( value.includes( MANIFEST_PLACEHOLDER ) ) {
+		if ( PLACEHOLDER_TOKEN.test( value ) ) {
 			out.push( path );
 		}
 		return;

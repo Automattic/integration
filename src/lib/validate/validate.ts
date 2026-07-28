@@ -479,14 +479,36 @@ function checkComposerTest( ctx: Context ): CheckResult {
 	};
 }
 
-/** Pull a PHP `const NAME = [ 'a', 'b' ]` string array out of the source. Used
- * to read the config contract the Starter Kit's Config class declares. */
-function phpConstStringArray( source: string, re: RegExp ): string[] {
+/**
+ * Strip PHP comments so a `REQUIRED_FIELDS` / `SENSITIVE_FIELDS` mention inside a
+ * `//`, `#`, or block comment isn't read as the real config contract. Best-effort
+ * and does not track string literals — fine for reading a `const` array. The `//`
+ * and `#` passes require a non-`:` / whitespace lead-in so a `https://` or `#fff`
+ * inside a string isn't mistaken for a comment start.
+ */
+function stripPhpComments( source: string ): string {
+	return source
+		.replace( /\/\*[\s\S]*?\*\//g, '' )
+		.replace( /(^|[^:])\/\/[^\n]*/g, '$1' )
+		.replace( /(^|\s)#[^\n]*/g, '$1' );
+}
+
+/**
+ * Pull a PHP `const NAME = [ 'a', 'b' ]` string array out of the source. Used to
+ * read the config contract the Starter Kit's Config class declares. Anchored on a
+ * `const <NAME>` declaration with a word boundary, so an unrelated constant whose
+ * name merely ends in `<NAME>` (e.g. `CUSTOM_REQUIRED_FIELDS`) is not mistaken for
+ * it. Keys may be single- or double-quoted.
+ */
+function phpConstStringArray( source: string, constName: string ): string[] {
+	// constName is a fixed alphabetic keyword, so interpolation is safe.
+	// eslint-disable-next-line security/detect-non-literal-regexp
+	const re = new RegExp( String.raw`\bconst\s+${ constName }\s*=\s*\[([^\]]*)\]` );
 	const match = re.exec( source );
 	if ( ! match ) {
 		return [];
 	}
-	return [ ...match[ 1 ].matchAll( /'([a-z0-9_]+)'/g ) ].map( entry => entry[ 1 ] );
+	return [ ...match[ 1 ].matchAll( /['"]([a-z0-9_]+)['"]/g ) ].map( entry => entry[ 1 ] );
 }
 
 interface ManifestField {
@@ -530,8 +552,9 @@ function manifestConfigFields(
  * that declares neither array.
  */
 function configFieldMismatches( ctx: Context, fields: Map< string, ManifestField > ): string[] {
-	const required = phpConstStringArray( ctx.phpSource, /REQUIRED_FIELDS\s*=\s*\[([^\]]*)\]/ );
-	const sensitive = phpConstStringArray( ctx.phpSource, /SENSITIVE_FIELDS\s*=\s*\[([^\]]*)\]/ );
+	const source = stripPhpComments( ctx.phpSource );
+	const required = phpConstStringArray( source, 'REQUIRED_FIELDS' );
+	const sensitive = phpConstStringArray( source, 'SENSITIVE_FIELDS' );
 	const issues: string[] = [];
 
 	for ( const key of required ) {

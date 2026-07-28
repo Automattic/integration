@@ -547,6 +547,21 @@ describe( 'validateIntegration', () => {
 		expect( rule3?.details?.join( '\n' ) ).toMatch( /support_contact.*REPLACE_ME/ );
 	} );
 
+	it( 'does not flag a real value that merely embeds the placeholder token', () => {
+		const root = join( dir, 'manifest-placeholder-embedded' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		writeFileSync(
+			join( root, 'a8c-manifest.yaml' ),
+			conformantManifest().replace(
+				'changelog: Initial release.',
+				'changelog: Removed the REPLACE_ME_TOKEN debug flag.'
+			)
+		);
+
+		expect( statusById( root )[ 'handoff-manifest' ] ).toBe( 'pass' );
+	} );
+
 	it( 'fails rule 3 when a REQUIRED_FIELDS config key is missing from the manifest', () => {
 		const root = join( dir, 'manifest-config-missing' );
 		mkdirSync( root, { recursive: true } );
@@ -589,6 +604,51 @@ describe( 'validateIntegration', () => {
 		);
 
 		expect( statusById( root )[ 'handoff-manifest' ] ).toBe( 'pass' );
+	} );
+
+	it( 'ignores a REQUIRED_FIELDS mention that lives only in a PHP comment', () => {
+		const root = join( dir, 'manifest-config-comment' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		writeFileSync(
+			join( root, 'inc', 'class-config.php' ),
+			"<?php\n/**\n * Example: REQUIRED_FIELDS = [ 'webhook_secret' ] would force that key.\n */\nfinal class Config {\n\t// SENSITIVE_FIELDS = [ 'api_base_url' ] is documented here, not declared.\n\tpublic const CONSTANT_NAME = 'VIP_ACME_WIDGET_CONFIG';\n\tpublic const REQUIRED_FIELDS = [ 'api_base_url' ];\n}\n"
+		);
+
+		expect( statusById( root )[ 'handoff-manifest' ] ).toBe( 'pass' );
+	} );
+
+	it( 'ignores an unrelated constant whose name ends in REQUIRED_FIELDS', () => {
+		const root = join( dir, 'manifest-config-suffix' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		// Sorts before class-config.php, so first-match order would pick it up.
+		writeFileSync(
+			join( root, 'inc', 'aaa-flags.php' ),
+			"<?php\nfinal class Flags {\n\tpublic const CUSTOM_REQUIRED_FIELDS = [ 'ghost_field' ];\n\tpublic const APP_SENSITIVE_FIELDS = [ 'api_base_url' ];\n}\n"
+		);
+		writeFileSync(
+			join( root, 'inc', 'class-config.php' ),
+			"<?php\nfinal class Config {\n\tpublic const CONSTANT_NAME = 'VIP_ACME_WIDGET_CONFIG';\n\tpublic const REQUIRED_FIELDS = [ 'api_base_url' ];\n}\n"
+		);
+
+		expect( statusById( root )[ 'handoff-manifest' ] ).toBe( 'pass' );
+	} );
+
+	it( 'reads a double-quoted config contract', () => {
+		const root = join( dir, 'manifest-config-double-quote' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		writeFileSync(
+			join( root, 'inc', 'class-config.php' ),
+			'<?php\nfinal class Config {\n\tpublic const CONSTANT_NAME = "VIP_ACME_WIDGET_CONFIG";\n\tpublic const REQUIRED_FIELDS = [ "webhook_secret" ];\n}\n'
+		);
+
+		const rule3 = validateIntegration( root ).results.find(
+			result => result.id === 'handoff-manifest'
+		);
+		expect( rule3?.status ).toBe( 'fail' );
+		expect( rule3?.details?.join( '\n' ) ).toMatch( /webhook_secret.*not declared/ );
 	} );
 
 	it( 'fails rule 7 when compatibility is only prose, with no CI matrix', () => {
