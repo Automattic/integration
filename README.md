@@ -29,7 +29,7 @@ Requires Node.js 20+.
 a8c-integration init
 ```
 
-Interactive — it asks for your **vendor name** and **integration name**, always builds from the canonical [VIP Integrations Starter Kit](https://github.com/Automattic/vip-integrations-starter-kit) (its default branch, no git history pulled), rewrites the example prefix set to your names, renames the entry file, and starts a fresh git history. You can also pass the answers as flags:
+Interactive — it asks for your **vendor name** and **integration name**, always builds from the canonical [VIP Integrations Starter Kit](https://github.com/Automattic/vip-integrations-starter-kit) (its default branch, no git history pulled), rewrites the example prefix set to your names, and renames the entry file. You can also pass the answers as flags:
 
 ```bash
 a8c-integration init --vendor "WordPress" --name "Content Sync"

@@ -20,6 +20,8 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 
+import { MANIFEST_PLACEHOLDER } from '../validate/manifest.schema';
+
 /** Everything from this heading onward in a file is left un-rewritten: it is a
  * token table that must keep the example prefix so its mapping stays readable. */
 const PRESERVE_MARKER = '## Making it your own';
@@ -233,9 +235,48 @@ export function scaffoldTree( root: string, vendor: string, name: string ): Scaf
 		renameSync( exampleEntry, join( root, entryFile ) );
 	}
 
+	personalizeManifest( root, prefix );
 	removeRedundantScaffolder( root );
 
 	return { changed, entryFile, prefix };
+}
+
+/** Handoff-manifest filenames the Starter Kit may ship, in priority order. */
+const MANIFEST_FILENAMES = [ 'a8c-manifest.yaml', 'a8c-manifest.yml' ];
+
+/**
+ * Rewrite the handoff manifest for a fresh scaffold. Two jobs:
+ *
+ * 1. Fill the fields `init` can derive from the integration name but the token
+ *    rewrite can't — the Starter-Kit-self-referential `summary` and
+ *    `release.changelog`.
+ * 2. Blank the fields only the partner can supply — the support contact and the
+ *    documentation URLs — with the `MANIFEST_PLACEHOLDER` sentinel, so
+ *    `a8c-integration validate` fails until the partner replaces them. The
+ *    sentinel is a valid value for each field, so the failure is a clear
+ *    "fill this in", not a schema error.
+ *
+ * The rest is either already set by the prefix rewrite (slug, names, namespace,
+ * constant) or is real integration content (the config fields, telemetry) the
+ * partner edits as they build. All comment-preserving line edits, so the
+ * `# yaml-language-server` modeline and inline notes survive.
+ */
+function personalizeManifest( root: string, prefix: PrefixSet ): void {
+	const file = MANIFEST_FILENAMES.map( name => join( root, name ) ).find( existsSync );
+	if ( ! file ) {
+		return;
+	}
+	const displayName = wordsCase( prefix.nameKebab );
+	const original = readFileSync( file, 'utf8' );
+	const updated = original
+		.replace( /^( *)summary: .*/m, `$1summary: ${ displayName } integration for WordPress VIP.` )
+		.replace( /^( *)changelog: .*/m, '$1changelog: Initial release.' )
+		.replace( /^( *)support_contact: .*/m, `$1support_contact: ${ MANIFEST_PLACEHOLDER }` )
+		.replace( /^( *)public_url: .*/m, `$1public_url: https://${ MANIFEST_PLACEHOLDER }` )
+		.replace( /^( *)support_url: .*/m, `$1support_url: https://${ MANIFEST_PLACEHOLDER }` );
+	if ( updated !== original ) {
+		writeFileSync( file, updated );
+	}
 }
 
 /**

@@ -102,13 +102,8 @@ export async function initCommand( opts: InitOptions = {} ): Promise< void > {
 	try {
 		laySkeleton( target );
 		( { entryFile, prefix } = scaffoldTree( target, vendor, name ) );
-
-		// Give the fresh project its own clean git history.
-		try {
-			execFileSync( 'git', [ 'init', '--quiet' ], { cwd: target, stdio: 'ignore' } );
-		} catch {
-			// git init is a nicety; a scaffold without it is still usable.
-		}
+		// The scaffold is left as a plain directory, not a git repo — the partner
+		// initializes version control themselves when and how they want.
 	} catch ( error ) {
 		// A clone that dies partway or a scaffold that throws would otherwise leave
 		// a half-populated directory that blocks the next run. Remove what we laid
