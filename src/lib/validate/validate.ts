@@ -16,6 +16,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { extname, join } from 'node:path';
 
 import { MANIFEST_FILENAMES, inspectManifest } from './manifest';
+import { MANIFEST_PLACEHOLDER } from './manifest.schema';
 
 import type { ManifestInspection } from './manifest';
 
@@ -478,6 +479,90 @@ function checkComposerTest( ctx: Context ): CheckResult {
 	};
 }
 
+/** Pull a PHP `const NAME = [ 'a', 'b' ]` string array out of the source. Used
+ * to read the config contract the Starter Kit's Config class declares. */
+function phpConstStringArray( source: string, re: RegExp ): string[] {
+	const match = re.exec( source );
+	if ( ! match ) {
+		return [];
+	}
+	return [ ...match[ 1 ].matchAll( /'([a-z0-9_]+)'/g ) ].map( entry => entry[ 1 ] );
+}
+
+interface ManifestField {
+	type?: string;
+	required: boolean;
+}
+
+/** Index the manifest's declared `runtime_config.fields` by key. */
+function manifestConfigFields(
+	parsed: Record< string, unknown > | null
+): Map< string, ManifestField > {
+	const byKey = new Map< string, ManifestField >();
+	const runtimeConfig = parsed?.runtime_config;
+	const fields =
+		runtimeConfig && typeof runtimeConfig === 'object'
+			? ( runtimeConfig as Record< string, unknown > ).fields
+			: undefined;
+	if ( ! Array.isArray( fields ) ) {
+		return byKey;
+	}
+	for ( const field of fields ) {
+		if ( field && typeof field === 'object' ) {
+			const record = field as Record< string, unknown >;
+			if ( typeof record.key === 'string' ) {
+				byKey.set( record.key, {
+					type: typeof record.type === 'string' ? record.type : undefined,
+					required: record.required === true,
+				} );
+			}
+		}
+	}
+	return byKey;
+}
+
+/**
+ * Cross-check the config keys the plugin declares (`Config::REQUIRED_FIELDS` and
+ * `Config::SENSITIVE_FIELDS`) against the manifest's `runtime_config.fields`, so
+ * a field the code reads from the config constant can't be missing from — or
+ * mis-typed in — the manifest VIP registers from. Deterministic for integrations
+ * following the Starter Kit Config convention; skipped (empty) for any plugin
+ * that declares neither array.
+ */
+function configFieldMismatches( ctx: Context, fields: Map< string, ManifestField > ): string[] {
+	const required = phpConstStringArray( ctx.phpSource, /REQUIRED_FIELDS\s*=\s*\[([^\]]*)\]/ );
+	const sensitive = phpConstStringArray( ctx.phpSource, /SENSITIVE_FIELDS\s*=\s*\[([^\]]*)\]/ );
+	const issues: string[] = [];
+
+	for ( const key of required ) {
+		const field = fields.get( key );
+		if ( ! field ) {
+			issues.push(
+				`Config field "${ key }" is required by the plugin (Config::REQUIRED_FIELDS) but is not declared in runtime_config.fields.`
+			);
+		} else if ( ! field.required ) {
+			issues.push(
+				`Config field "${ key }" is required by the plugin but is not marked "required: true" in the manifest.`
+			);
+		}
+	}
+	for ( const key of sensitive ) {
+		const field = fields.get( key );
+		if ( ! field ) {
+			issues.push(
+				`Config field "${ key }" is a secret (Config::SENSITIVE_FIELDS) but is not declared in runtime_config.fields.`
+			);
+		} else if ( field.type !== 'secret' ) {
+			issues.push(
+				`Config field "${ key }" holds a secret but is declared as type "${
+					field.type ?? 'unset'
+				}" instead of "secret" in the manifest.`
+			);
+		}
+	}
+	return issues;
+}
+
 function checkHandoffManifest( ctx: Context ): CheckResult {
 	const base = {
 		id: 'handoff-manifest',
@@ -506,15 +591,31 @@ function checkHandoffManifest( ctx: Context ): CheckResult {
 		};
 	}
 
-	const issues = [
-		...manifest.missing.map( field => `Missing required field: ${ field }` ),
-		...manifest.problems,
+	if ( manifest.errors.length > 0 ) {
+		return {
+			...base,
+			status: 'fail',
+			message: `${ manifest.file } does not match the manifest schema — VIP cannot register the integration from it as-is.`,
+			details: manifest.errors,
+		};
+	}
+
+	// Beyond schema shape: the manifest must have no unfilled init placeholders,
+	// and its config fields must cover the keys the plugin reads from the config
+	// constant. Both are gathered together so one run reports every gap.
+	const issues: string[] = [
+		...manifest.placeholders.map(
+			path =>
+				`${ path } still contains the "${ MANIFEST_PLACEHOLDER }" placeholder — replace it with your integration's value.`
+		),
+		...configFieldMismatches( ctx, manifestConfigFields( manifest.parsed ) ),
 	];
+
 	if ( issues.length > 0 ) {
 		return {
 			...base,
 			status: 'fail',
-			message: `${ manifest.file } is incomplete — VIP cannot register the integration from it as-is.`,
+			message: `${ manifest.file } is incomplete — resolve the following before submitting.`,
 			details: issues,
 		};
 	}
@@ -522,9 +623,9 @@ function checkHandoffManifest( ctx: Context ): CheckResult {
 	return {
 		...base,
 		status: 'pass',
-		message: `${ manifest.file } declares every field VIP needs to register and load the integration.`,
+		message: `${ manifest.file } is schema-valid, placeholder-free, and its config fields match the plugin.`,
 		details: [
-			'Static check: it confirms the required fields are present and well-formed, not that their values are correct (that is confirmed in human review).',
+			'Static check: it confirms the manifest is present, well-formed, and covers the config the code reads, not that the values themselves are correct (that is confirmed in human review).',
 		],
 	};
 }
