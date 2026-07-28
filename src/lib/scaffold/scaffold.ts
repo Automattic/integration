@@ -20,6 +20,7 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 
+import { MANIFEST_FILENAMES } from '../validate/manifest';
 import { MANIFEST_PLACEHOLDER } from '../validate/manifest.schema';
 
 /** Everything from this heading onward in a file is left un-rewritten: it is a
@@ -240,9 +241,6 @@ export function scaffoldTree( root: string, vendor: string, name: string ): Scaf
 
 	return { changed, entryFile, prefix };
 }
-
-/** Handoff-manifest filenames the Starter Kit may ship, in priority order. */
-const MANIFEST_FILENAMES = [ 'a8c-manifest.yaml', 'a8c-manifest.yml' ];
 
 /**
  * Rewrite the handoff manifest for a fresh scaffold. Two jobs:
