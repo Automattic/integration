@@ -1,11 +1,11 @@
 # Architecture
 
-`a8c-integration` is a small TypeScript CLI. The design goal is that each piece is independently testable and free of framework glue, so the conformance logic and the scaffolding logic can be exercised without spawning the CLI.
+`vip-integration` is a small TypeScript CLI. The design goal is that each piece is independently testable and free of framework glue, so the conformance logic and the scaffolding logic can be exercised without spawning the CLI.
 
 ## Layout
 
 ```
-bin/a8c-integration        Launcher shim: requires dist/cli.js and calls run()
+bin/vip-integration        Launcher shim: requires dist/cli.js and calls run()
 src/
   cli.ts                   Commander wiring: defines `init` and `validate`
   commands/

@@ -1,5 +1,5 @@
 {
-  "name": "@automattic/a8c-integration",
+  "name": "@automattic/vip-integration",
   "version": "0.1.0",
   "description": "CLI to scaffold and validate WordPress VIP Integration Center add-ons.",
   "keywords": [
@@ -21,7 +21,7 @@
   "author": "Automattic Inc.",
   "license": "MIT",
   "bin": {
-    "a8c-integration": "bin/a8c-integration"
+    "vip-integration": "bin/vip-integration"
   },
   "files": [
     "bin",

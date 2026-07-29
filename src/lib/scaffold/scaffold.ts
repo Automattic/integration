@@ -1,5 +1,5 @@
 /**
- * Scaffolding transforms for `a8c-integration init`.
+ * Scaffolding transforms for `vip-integration init`.
  *
  * Ports the Starter Kit's `composer setup` rewrite (bin/setup.php) into
  * TypeScript so scaffolding needs no PHP. It rewrites the example prefix set
@@ -250,7 +250,7 @@ export function scaffoldTree( root: string, vendor: string, name: string ): Scaf
  *    `release.changelog`.
  * 2. Blank the fields only the partner can supply — the support contact and the
  *    documentation URLs — with the `MANIFEST_PLACEHOLDER` sentinel, so
- *    `a8c-integration validate` fails until the partner replaces them. The
+ *    `vip-integration validate` fails until the partner replaces them. The
  *    sentinel is a valid value for each field, so the failure is a clear
  *    "fill this in", not a schema error.
  *
@@ -278,7 +278,7 @@ function personalizeManifest( root: string, prefix: PrefixSet ): void {
 }
 
 /**
- * `a8c-integration init` replaces the Starter Kit's own `composer setup`, so the
+ * `vip-integration init` replaces the Starter Kit's own `composer setup`, so the
  * `bin/setup.php` scaffolder and its composer script are dead weight in a
  * generated integration — and re-running them would re-mangle the prefix set.
  * Drop both, leaving nothing that dangles.

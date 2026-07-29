@@ -21,7 +21,7 @@
 export const MANIFEST_KIND = 'vip-integration-handoff';
 
 /**
- * Sentinel `a8c-integration init` leaves in the manifest fields a partner must
+ * Sentinel `vip-integration init` leaves in the manifest fields a partner must
  * fill by hand (contact, docs URLs). It is a valid value for its field so the
  * schema still passes — `validate` fails separately while any field's value
  * still contains it, forcing the partner to replace it before submitting.

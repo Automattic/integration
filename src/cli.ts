@@ -1,5 +1,5 @@
 /**
- * a8c-integration — CLI to scaffold and validate WordPress VIP Integration
+ * vip-integration — CLI to scaffold and validate WordPress VIP Integration
  * Center add-ons. Two commands: `init` (start a new integration from the
  * Starter Kit) and `validate` (check an integration for conformance).
  */
@@ -30,7 +30,7 @@ export function run( argv: string[] = process.argv ): void {
 	const program = new Command();
 
 	program
-		.name( 'a8c-integration' )
+		.name( 'vip-integration' )
 		.description( 'Scaffold and validate WordPress VIP Integration Center add-ons.' )
 		.version( version(), '-v, --version' )
 		// Drop the built-in `help <command>` subcommand — `<command> --help` covers it.

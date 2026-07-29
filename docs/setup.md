@@ -1,6 +1,6 @@
 # Setup
 
-How to build and run `a8c-integration` from source.
+How to build and run `vip-integration` from source.
 
 ## Prerequisites
 
@@ -27,17 +27,17 @@ The CLI is written in TypeScript and compiles to `dist/` with `tsc`:
 pnpm build
 ```
 
-`bin/a8c-integration` is a thin launcher that requires the compiled `dist/cli.js`, so after a build you can run:
+`bin/vip-integration` is a thin launcher that requires the compiled `dist/cli.js`, so after a build you can run:
 
 ```bash
-node bin/a8c-integration --help
+node bin/vip-integration --help
 ```
 
-To link it as a global `a8c-integration` command while developing:
+To link it as a global `vip-integration` command while developing:
 
 ```bash
 pnpm build && pnpm link --global
-a8c-integration --help
+vip-integration --help
 ```
 
 ## Type-check, lint, and format
@@ -54,8 +54,8 @@ pnpm format          # Prettier (wp-prettier) — write; `pnpm format:check` to 
 run clones it from GitHub:
 
 ```bash
-node bin/a8c-integration init --vendor "WordPress" --name "Content Sync" --dir /tmp/content-sync
-node bin/a8c-integration validate /tmp/content-sync
+node bin/vip-integration init --vendor "WordPress" --name "Content Sync" --dir /tmp/content-sync
+node bin/vip-integration validate /tmp/content-sync
 ```
 
 ### Offline / test override
@@ -67,7 +67,7 @@ variable:
 
 ```bash
 A8C_STARTER_KIT_SOURCE=/path/to/vip-integrations-starter-kit \
-  node bin/a8c-integration init --vendor "WordPress" --name "Content Sync" --dir /tmp/content-sync
+  node bin/vip-integration init --vendor "WordPress" --name "Content Sync" --dir /tmp/content-sync
 ```
 
 This override is for development only; it is not part of the public interface.
