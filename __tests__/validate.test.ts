@@ -90,7 +90,7 @@ function scaffoldConformant( root: string ): void {
 		`<?php\n/**\n * Plugin Name: Acme Widget\n */\nrequire_once __DIR__ . '/vendor/autoload.php';\n`
 	);
 
-	writeFileSync( join( root, 'a8c-manifest.yaml' ), conformantManifest() );
+	writeFileSync( join( root, 'vip-manifest.yaml' ), conformantManifest() );
 
 	writeFileSync(
 		join( root, 'inc', 'class-config.php' ),
@@ -326,7 +326,7 @@ describe( 'validateIntegration', () => {
 		const root = join( dir, 'manifest-missing' );
 		mkdirSync( root, { recursive: true } );
 		scaffoldConformant( root );
-		rmSync( join( root, 'a8c-manifest.yaml' ) );
+		rmSync( join( root, 'vip-manifest.yaml' ) );
 
 		expect( statusById( root )[ 'handoff-manifest' ] ).toBe( 'fail' );
 	} );
@@ -337,7 +337,7 @@ describe( 'validateIntegration', () => {
 		scaffoldConformant( root );
 		// Drop runtime_config.constant_name — VIP needs it to define the config.
 		writeFileSync(
-			join( root, 'a8c-manifest.yaml' ),
+			join( root, 'vip-manifest.yaml' ),
 			conformantManifest().replace( '  constant_name: VIP_ACME_WIDGET_CONFIG\n', '' )
 		);
 
@@ -353,7 +353,7 @@ describe( 'validateIntegration', () => {
 		mkdirSync( root, { recursive: true } );
 		scaffoldConformant( root );
 		writeFileSync(
-			join( root, 'a8c-manifest.yaml' ),
+			join( root, 'vip-manifest.yaml' ),
 			conformantManifest().replace( /\n {6}values:[\s\S]*$/, '' )
 		);
 
@@ -369,7 +369,7 @@ describe( 'validateIntegration', () => {
 		mkdirSync( root, { recursive: true } );
 		scaffoldConformant( root );
 		writeFileSync(
-			join( root, 'a8c-manifest.yaml' ),
+			join( root, 'vip-manifest.yaml' ),
 			conformantManifest().replace( '    entry_file:', '    entryfile:' )
 		);
 
@@ -385,7 +385,7 @@ describe( 'validateIntegration', () => {
 		mkdirSync( root, { recursive: true } );
 		scaffoldConformant( root );
 		writeFileSync(
-			join( root, 'a8c-manifest.yaml' ),
+			join( root, 'vip-manifest.yaml' ),
 			conformantManifest().replace( 'VIP_ACME_WIDGET_CONFIG', 'ACME_WIDGET' )
 		);
 
@@ -401,7 +401,7 @@ describe( 'validateIntegration', () => {
 		mkdirSync( root, { recursive: true } );
 		scaffoldConformant( root );
 		writeFileSync(
-			join( root, 'a8c-manifest.yaml' ),
+			join( root, 'vip-manifest.yaml' ),
 			conformantManifest().replace( 'vip-integration-handoff', 'something-else' )
 		);
 
@@ -417,7 +417,7 @@ describe( 'validateIntegration', () => {
 		mkdirSync( root, { recursive: true } );
 		scaffoldConformant( root );
 		writeFileSync(
-			join( root, 'a8c-manifest.yaml' ),
+			join( root, 'vip-manifest.yaml' ),
 			conformantManifest().replace(
 				'documentation:\n  public_url: https://acme.example/docs/widget\n  support_url: https://acme.example/docs/widget/support\n',
 				''
@@ -436,7 +436,7 @@ describe( 'validateIntegration', () => {
 		mkdirSync( root, { recursive: true } );
 		scaffoldConformant( root );
 		writeFileSync(
-			join( root, 'a8c-manifest.yaml' ),
+			join( root, 'vip-manifest.yaml' ),
 			conformantManifest().replace( 'https://acme.example/docs/widget/support', 'not-a-url' )
 		);
 
@@ -452,7 +452,7 @@ describe( 'validateIntegration', () => {
 		mkdirSync( root, { recursive: true } );
 		scaffoldConformant( root );
 		writeFileSync(
-			join( root, 'a8c-manifest.yaml' ),
+			join( root, 'vip-manifest.yaml' ),
 			conformantManifest().replace( 'prefix: acme_widget_', 'prefix: acme_widget' )
 		);
 
@@ -468,7 +468,7 @@ describe( 'validateIntegration', () => {
 		mkdirSync( root, { recursive: true } );
 		scaffoldConformant( root );
 		writeFileSync(
-			join( root, 'a8c-manifest.yaml' ),
+			join( root, 'vip-manifest.yaml' ),
 			conformantManifest().replace(
 				'telemetry:\n  prefix: acme_widget_\n  default_properties:\n    - plugin_version\n  events:\n    - name: acme_widget_sync_started\n      type: tracks\n      trigger: A sync starts.\n      properties:\n        - trigger\n',
 				''
@@ -483,7 +483,7 @@ describe( 'validateIntegration', () => {
 		mkdirSync( root, { recursive: true } );
 		scaffoldConformant( root );
 		writeFileSync(
-			join( root, 'a8c-manifest.yaml' ),
+			join( root, 'vip-manifest.yaml' ),
 			conformantManifest().replace( 'plugin_version: 1.0.0', 'plugin_version: v1' )
 		);
 
@@ -499,7 +499,7 @@ describe( 'validateIntegration', () => {
 		mkdirSync( root, { recursive: true } );
 		scaffoldConformant( root );
 		writeFileSync(
-			join( root, 'a8c-manifest.yaml' ),
+			join( root, 'vip-manifest.yaml' ),
 			conformantManifest().replace(
 				'    - key: api_base_url\n      label: API base URL\n      type: url\n      required: true',
 				'    - key: api_base_url\n      label: API base URL\n      type: url\n      required: true\n      autogen: false\n      note: Provided by the vendor.'
@@ -514,7 +514,7 @@ describe( 'validateIntegration', () => {
 		mkdirSync( root, { recursive: true } );
 		scaffoldConformant( root );
 		writeFileSync(
-			join( root, 'a8c-manifest.yaml' ),
+			join( root, 'vip-manifest.yaml' ),
 			conformantManifest().replace(
 				'      required: true\n    - key: sync_mode',
 				'      required: true\n      autogen: not-a-bool\n    - key: sync_mode'
@@ -533,7 +533,7 @@ describe( 'validateIntegration', () => {
 		mkdirSync( root, { recursive: true } );
 		scaffoldConformant( root );
 		writeFileSync(
-			join( root, 'a8c-manifest.yaml' ),
+			join( root, 'vip-manifest.yaml' ),
 			conformantManifest().replace(
 				'support_contact: support@acme.example',
 				'support_contact: REPLACE_ME'
@@ -552,7 +552,7 @@ describe( 'validateIntegration', () => {
 		mkdirSync( root, { recursive: true } );
 		scaffoldConformant( root );
 		writeFileSync(
-			join( root, 'a8c-manifest.yaml' ),
+			join( root, 'vip-manifest.yaml' ),
 			conformantManifest().replace(
 				'changelog: Initial release.',
 				'changelog: Removed the REPLACE_ME_TOKEN debug flag.'
