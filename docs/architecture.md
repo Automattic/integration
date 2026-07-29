@@ -15,7 +15,7 @@ src/
     colors.ts              Tiny ANSI helper (chalk-shaped, dependency-free)
     validate/
       validate.ts          Nine conformance checks (pure, fs-only)
-      manifest.ts          Handoff-manifest (a8c-manifest.yaml) validation
+      manifest.ts          Handoff-manifest (vip-manifest.yaml) validation
       manifest.schema.ts   JSON Schema: the manifest's fields and constraints
       report.ts            Human and JSON rendering of a report
     scaffold/
@@ -33,7 +33,7 @@ __tests__/                 Jest tests for validate, report, and scaffold
 
 Checks if the integration meets the wpvip guidelines. All checks are **static** — they inspect files and config, never execute the integration. `validateIntegration(root)` builds a single `Context` (parsed `composer.json`, concatenated PHP/docs/workflow text, the detected config constant and entry file, and the parsed handoff manifest) and runs each rule against it, so the filesystem is read once. Rules return `pass` / `fail` / `warn` / `not_applicable`; only a `fail` breaks conformance. Two inherently non-static items (config-schema match, security review) are returned as human-review items.
 
-One rule validates the **handoff manifest** (`a8c-manifest.yaml`) — the single file a partner fills in so VIP can register and load the integration from the manifest alone. `manifest.ts` parses it and validates it against `manifest.schema.ts` (a JSON Schema, compiled with Ajv) — the single source of truth for the manifest's fields and constraints. It is a presence-and-shape check that every field VIP consumes (identity, documentation, plugin runtime, the runtime-config schema, telemetry, and release metadata) is present and well-formed, not a check that the values are correct. The Starter Kit ships an identical `a8c-manifest.schema.json` so partners validate against the same contract in their editor.
+One rule validates the **handoff manifest** (`vip-manifest.yaml`) — the single file a partner fills in so VIP can register and load the integration from the manifest alone. `manifest.ts` parses it and validates it against `manifest.schema.ts` (a JSON Schema, compiled with Ajv) — the single source of truth for the manifest's fields and constraints. It is a presence-and-shape check that every field VIP consumes (identity, documentation, plugin runtime, the runtime-config schema, telemetry, and release metadata) is present and well-formed, not a check that the values are correct. The Starter Kit ships an identical `vip-manifest.schema.json` so partners validate against the same contract in their editor.
 
 Beyond the schema, the same rule enforces two things a raw schema can't. First, it fails while any field still holds the `MANIFEST_PLACEHOLDER` sentinel that `init` leaves in the partner-only fields (contact, docs URLs), so a partner cannot submit a half-filled scaffold. Second, it cross-checks the config keys the plugin declares (`Config::REQUIRED_FIELDS` / `SENSITIVE_FIELDS`) against the manifest's `runtime_config.fields`, so a config field the code reads from the constant can't be missing from — or mis-typed in — the manifest. That cross-check is deterministic for integrations following the Starter Kit Config convention and skipped for any plugin that declares neither array.
 

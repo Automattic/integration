@@ -144,9 +144,9 @@ describe( 'scaffoldTree', () => {
 		const root = join( dir, 'manifest' );
 		mkdirSync( root, { recursive: true } );
 		writeFileSync(
-			join( root, 'a8c-manifest.yaml' ),
+			join( root, 'vip-manifest.yaml' ),
 			[
-				'# yaml-language-server: $schema=./a8c-manifest.schema.json',
+				'# yaml-language-server: $schema=./vip-manifest.schema.json',
 				'integration:',
 				'  slug: example-integration',
 				'  summary: Reference integration built from the VIP Integrations Starter Kit.',
@@ -163,7 +163,7 @@ describe( 'scaffoldTree', () => {
 
 		scaffoldTree( root, 'Acme', 'Content Sync' );
 
-		const manifest = readFileSync( join( root, 'a8c-manifest.yaml' ), 'utf8' );
+		const manifest = readFileSync( join( root, 'vip-manifest.yaml' ), 'utf8' );
 		// Derivable fields get real values.
 		expect( manifest ).toContain( 'summary: Content Sync integration for WordPress VIP.' );
 		expect( manifest ).toContain( 'changelog: Initial release.' );
@@ -172,7 +172,7 @@ describe( 'scaffoldTree', () => {
 		expect( manifest ).toContain( 'public_url: https://REPLACE_ME' );
 		expect( manifest ).toContain( 'support_url: https://REPLACE_ME' );
 		// The schema modeline comment survives the edit.
-		expect( manifest ).toContain( '# yaml-language-server: $schema=./a8c-manifest.schema.json' );
+		expect( manifest ).toContain( '# yaml-language-server: $schema=./vip-manifest.schema.json' );
 		// The token pass still ran: the example slug was rewritten.
 		expect( manifest ).toContain( 'slug: content-sync' );
 	} );

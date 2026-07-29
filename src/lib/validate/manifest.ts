@@ -1,7 +1,7 @@
 /**
  * Handoff-manifest validation for VIP partner integrations.
  *
- * The handoff manifest (`a8c-manifest.yaml`) is the single file a partner fills
+ * The handoff manifest (`vip-manifest.yaml`) is the single file a partner fills
  * in so VIP can register and load their integration from the manifest alone —
  * without reading the plugin's code. VIP uses it to wire up the constant-backed
  * loader, the integration service registration + secret sync, and the
@@ -25,7 +25,7 @@ import { MANIFEST_PLACEHOLDER, MANIFEST_SCHEMA } from './manifest.schema';
 import type { ErrorObject, ValidateFunction } from 'ajv';
 
 /** Accepted manifest file names, checked at the integration root in order. */
-export const MANIFEST_FILENAMES = [ 'a8c-manifest.yaml', 'a8c-manifest.yml' ];
+export const MANIFEST_FILENAMES = [ 'vip-manifest.yaml', 'vip-manifest.yml' ];
 
 export interface ManifestInspection {
 	/** The manifest file name found at the root, or null when none exists. */

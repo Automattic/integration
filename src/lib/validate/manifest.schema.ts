@@ -1,11 +1,11 @@
 /**
- * JSON Schema for the VIP integration handoff manifest (`a8c-manifest.yaml`).
+ * JSON Schema for the VIP integration handoff manifest (`vip-manifest.yaml`).
  *
  * This is the single source of truth for what a manifest may contain and the
  * constraints on each field. `manifest.ts` compiles it with Ajv and validates a
  * parsed manifest against it, so adding or tightening a rule means editing the
  * schema here — not hand-written checks. The Starter Kit ships an identical
- * `a8c-manifest.schema.json` so partners get the same contract in their editor.
+ * `vip-manifest.schema.json` so partners get the same contract in their editor.
  *
  * `additionalProperties: false` is set on every defined object on purpose: VIP
  * registers the integration from this file alone, so an unexpected or
@@ -51,7 +51,7 @@ const HTTP_URL_PATTERN = '^https?://.+';
 const SEMVER_PATTERN = '^[0-9]+\\.[0-9]+\\.[0-9]+([-+][A-Za-z0-9.-]+)?$';
 
 export const MANIFEST_SCHEMA = {
-	$id: 'https://automattic.github.io/vip-integration/a8c-manifest.schema.json',
+	$id: 'https://automattic.github.io/vip-integration/vip-manifest.schema.json',
 	title: 'WordPress VIP Integration Handoff Manifest',
 	description:
 		'The single file a partner fills in so VIP can register and load their integration without reading the plugin source.',
