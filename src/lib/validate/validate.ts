@@ -810,6 +810,44 @@ function claimsCompatibilityException( composer: ComposerJson | null ): boolean 
 	return ( vip as Record< string, unknown > )[ 'compatibility-exception' ] === 'approved';
 }
 
+/**
+ * Collect the PHP versions a CI workflow tests against. A version counts only
+ * when it sits against a `php` / `php-version` key, so unrelated tokens
+ * (mysql:8.4, a node 18.4 matrix, a pinned action tag) aren't mistaken for
+ * coverage. Handles the three common GitHub Actions matrix forms: a same-line
+ * scalar (`php: '8.5'`), a flow array (`php: [8.2, 8.3]`), and a block sequence
+ * (`php:` followed by `- '8.2'` items on the next lines).
+ */
+function collectPhpVersions( workflowsText: string ): Set< string > {
+	const versions = new Set< string >();
+	const lines = workflowsText.split( /\r?\n/ );
+	const keyRe = /php(?:[-_]version)?['"]?\s*[:=]\s*([^\n]*)/gi;
+	const versionRe = /\d+\.\d+/g;
+
+	for ( let line = 0; line < lines.length; line++ ) {
+		for ( const key of lines[ line ].matchAll( keyRe ) ) {
+			const value = key[ 1 ].trim();
+			if ( value !== '' ) {
+				// Same-line scalar or flow array — pull every version token out of it.
+				for ( const version of value.match( versionRe ) ?? [] ) {
+					versions.add( version );
+				}
+				continue;
+			}
+			// Nothing follows the key: a block sequence carries the values on the
+			// next lines as `- 8.2` items. Read them until the sequence ends.
+			for ( let next = line + 1; next < lines.length; next++ ) {
+				const item = lines[ next ].match( /^\s*-\s*['"]?(\d+\.\d+)/ );
+				if ( ! item ) {
+					break;
+				}
+				versions.add( item[ 1 ] );
+			}
+		}
+	}
+	return versions;
+}
+
 function checkCompatibilityMatrix( ctx: Context ): CheckResult {
 	const base = {
 		id: 'compatibility-matrix',
@@ -855,14 +893,7 @@ function checkCompatibilityMatrix( ctx: Context ): CheckResult {
 	if ( ! /\b7\.0\b/.test( ctx.workflowsText ) && ! wpLatest.test( ctx.workflowsText ) ) {
 		missing.push( 'WordPress 7.0' );
 	}
-	// Only count a PHP version that sits against a `php` / `php-version` key. A
-	// bare `.includes('8.4')` matches mysql:8.4, a node 18.4 matrix, or a pinned
-	// action tag, so an integration testing only 8.2 could report full coverage.
-	const phpVersions = new Set(
-		[ ...ctx.workflowsText.matchAll( /php(?:[-_]version)?['":= ]+['"]?(\d+\.\d+)/gi ) ].map(
-			match => match[ 1 ]
-		)
-	);
+	const phpVersions = collectPhpVersions( ctx.workflowsText );
 	for ( const php of [ '8.2', '8.3', '8.4', '8.5' ] ) {
 		if ( ! phpVersions.has( php ) ) {
 			missing.push( `PHP ${ php }` );

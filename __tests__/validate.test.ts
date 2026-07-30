@@ -778,6 +778,48 @@ describe( 'validateIntegration', () => {
 		expect( rule7?.message ).toMatch( /PHP 8\.5/ );
 	} );
 
+	it( 'accepts a PHP matrix written as a YAML flow array for rule 7', () => {
+		const root = join( dir, 'php-flow-array' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		writeFileSync(
+			join( root, '.github', 'workflows', 'unit-tests.yml' ),
+			[
+				'jobs:',
+				'  test:',
+				'    strategy:',
+				'      matrix:',
+				'        wp: [6.9, 7.0]',
+				'        php: [8.2, 8.3, 8.4, 8.5]',
+			].join( '\n' )
+		);
+
+		expect( statusById( root )[ 'compatibility-matrix' ] ).toBe( 'pass' );
+	} );
+
+	it( 'accepts a PHP matrix written as a YAML block sequence for rule 7', () => {
+		const root = join( dir, 'php-block-sequence' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		writeFileSync(
+			join( root, '.github', 'workflows', 'unit-tests.yml' ),
+			[
+				'jobs:',
+				'  test:',
+				'    strategy:',
+				'      matrix:',
+				'        wp: [6.9, 7.0]',
+				'        php-version:',
+				"          - '8.2'",
+				"          - '8.3'",
+				"          - '8.4'",
+				"          - '8.5'",
+			].join( '\n' )
+		);
+
+		expect( statusById( root )[ 'compatibility-matrix' ] ).toBe( 'pass' );
+	} );
+
 	it( 'warns (not passes) rule 7 when a structured compatibility exception is claimed', () => {
 		const root = join( dir, 'compat-exception' );
 		mkdirSync( root, { recursive: true } );
