@@ -562,7 +562,7 @@ describe( 'validateIntegration', () => {
 		expect( statusById( root )[ 'handoff-manifest' ] ).toBe( 'pass' );
 	} );
 
-	it( 'fails rule 3 when a REQUIRED_FIELDS config key is missing from the manifest', () => {
+	it( 'warns without blocking conformance when a REQUIRED_FIELDS key is missing from the manifest', () => {
 		const root = join( dir, 'manifest-config-missing' );
 		mkdirSync( root, { recursive: true } );
 		scaffoldConformant( root );
@@ -571,14 +571,15 @@ describe( 'validateIntegration', () => {
 			"<?php\nfinal class Config {\n\tpublic const CONSTANT_NAME = 'VIP_ACME_WIDGET_CONFIG';\n\tpublic const REQUIRED_FIELDS = [ 'api_base_url', 'webhook_secret' ];\n}\n"
 		);
 
-		const rule3 = validateIntegration( root ).results.find(
-			result => result.id === 'handoff-manifest'
-		);
-		expect( rule3?.status ).toBe( 'fail' );
+		const report = validateIntegration( root );
+		const rule3 = report.results.find( result => result.id === 'handoff-manifest' );
+		expect( rule3?.status ).toBe( 'warn' );
 		expect( rule3?.details?.join( '\n' ) ).toMatch( /webhook_secret.*not declared/ );
+		// The cross-check is heuristic, so it must not fail an otherwise-conformant integration.
+		expect( report.conformant ).toBe( true );
 	} );
 
-	it( 'fails rule 3 when a SENSITIVE_FIELDS config key is not typed secret', () => {
+	it( 'warns without blocking conformance when a SENSITIVE_FIELDS key is not typed secret', () => {
 		const root = join( dir, 'manifest-config-secret' );
 		mkdirSync( root, { recursive: true } );
 		scaffoldConformant( root );
@@ -587,11 +588,11 @@ describe( 'validateIntegration', () => {
 			"<?php\nfinal class Config {\n\tpublic const CONSTANT_NAME = 'VIP_ACME_WIDGET_CONFIG';\n\tpublic const SENSITIVE_FIELDS = [ 'api_base_url' ];\n}\n"
 		);
 
-		const rule3 = validateIntegration( root ).results.find(
-			result => result.id === 'handoff-manifest'
-		);
-		expect( rule3?.status ).toBe( 'fail' );
+		const report = validateIntegration( root );
+		const rule3 = report.results.find( result => result.id === 'handoff-manifest' );
+		expect( rule3?.status ).toBe( 'warn' );
 		expect( rule3?.details?.join( '\n' ) ).toMatch( /api_base_url.*secret/ );
+		expect( report.conformant ).toBe( true );
 	} );
 
 	it( 'passes rule 3 when the config contract matches the manifest', () => {
@@ -647,7 +648,7 @@ describe( 'validateIntegration', () => {
 		const rule3 = validateIntegration( root ).results.find(
 			result => result.id === 'handoff-manifest'
 		);
-		expect( rule3?.status ).toBe( 'fail' );
+		expect( rule3?.status ).toBe( 'warn' );
 		expect( rule3?.details?.join( '\n' ) ).toMatch( /webhook_secret.*not declared/ );
 	} );
 

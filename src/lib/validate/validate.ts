@@ -623,30 +623,44 @@ function checkHandoffManifest( ctx: Context ): CheckResult {
 		};
 	}
 
-	// Beyond schema shape: the manifest must have no unfilled init placeholders,
-	// and its config fields must cover the keys the plugin reads from the config
-	// constant. Both are gathered together so one run reports every gap.
-	const issues: string[] = [
-		...manifest.placeholders.map(
-			path =>
-				`${ path } still contains the "${ MANIFEST_PLACEHOLDER }" placeholder — replace it with your integration's value.`
-		),
-		...configFieldMismatches( ctx, manifestConfigFields( manifest.parsed ) ),
-	];
+	// An unfilled init placeholder is a definite, blocking gap — VIP cannot
+	// register a manifest that still carries one. The config cross-check is
+	// different: it reads the plugin's contract heuristically from the
+	// concatenated PHP source and takes the first matching `REQUIRED_FIELDS` /
+	// `SENSITIVE_FIELDS` const, so it can't be certain it matched the real Config
+	// class. A mismatch is therefore surfaced as a non-blocking warning to verify,
+	// not a hard failure that could wrongly mark a conformant integration.
+	const placeholderIssues = manifest.placeholders.map(
+		path =>
+			`${ path } still contains the "${ MANIFEST_PLACEHOLDER }" placeholder — replace it with your integration's value.`
+	);
 
-	if ( issues.length > 0 ) {
+	if ( placeholderIssues.length > 0 ) {
 		return {
 			...base,
 			status: 'fail',
 			message: `${ manifest.file } is incomplete — resolve the following before submitting.`,
-			details: issues,
+			details: placeholderIssues,
+		};
+	}
+
+	const configIssues = configFieldMismatches( ctx, manifestConfigFields( manifest.parsed ) );
+	if ( configIssues.length > 0 ) {
+		return {
+			...base,
+			status: 'warn',
+			message: `${ manifest.file } is schema-valid, but its config fields may not line up with what the plugin declares — double-check the following.`,
+			details: [
+				...configIssues,
+				"Best-effort cross-check: the plugin's config contract is read heuristically from the PHP source, so treat this as a prompt to verify — not a definitive failure.",
+			],
 		};
 	}
 
 	return {
 		...base,
 		status: 'pass',
-		message: `${ manifest.file } is schema-valid, placeholder-free, and its config fields match the plugin.`,
+		message: `${ manifest.file } is schema-valid, placeholder-free, and its config fields line up with the plugin.`,
 		details: [
 			'Static check: it confirms the manifest is present, well-formed, and covers the config the code reads, not that the values themselves are correct (that is confirmed in human review).',
 		],
