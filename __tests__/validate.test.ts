@@ -820,6 +820,75 @@ describe( 'validateIntegration', () => {
 		expect( statusById( root )[ 'compatibility-matrix' ] ).toBe( 'pass' );
 	} );
 
+	it( 'fails rule 7 when 6.9/7.0 sit against a non-WordPress key (no WP evidence)', () => {
+		const root = join( dir, 'php-wp-unscoped' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		// `node: [6.9, 7.0]` is not WordPress evidence — Rule 7 must not read it as
+		// WP coverage just because the tokens appear somewhere in the workflow.
+		writeFileSync(
+			join( root, '.github', 'workflows', 'unit-tests.yml' ),
+			[
+				'jobs:',
+				'  test:',
+				'    strategy:',
+				'      matrix:',
+				'        node: [6.9, 7.0]',
+				'        php: [8.2, 8.3, 8.4, 8.5]',
+			].join( '\n' )
+		);
+
+		const rule7 = validateIntegration( root ).results.find(
+			result => result.id === 'compatibility-matrix'
+		);
+		expect( rule7?.status ).toBe( 'fail' );
+		expect( rule7?.message ).toMatch( /WordPress 6\.9/ );
+		expect( rule7?.message ).toMatch( /WordPress 7\.0/ );
+	} );
+
+	it( 'accepts the `php-versions` (plural) matrix key for rule 7', () => {
+		const root = join( dir, 'php-versions-plural' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		writeFileSync(
+			join( root, '.github', 'workflows', 'unit-tests.yml' ),
+			[
+				'jobs:',
+				'  test:',
+				'    strategy:',
+				'      matrix:',
+				'        wp: [6.9, 7.0]',
+				"        php-versions: ['8.2', '8.3', '8.4', '8.5']",
+			].join( '\n' )
+		);
+
+		expect( statusById( root )[ 'compatibility-matrix' ] ).toBe( 'pass' );
+	} );
+
+	it( 'does not count PHP versions that only appear in a trailing comment', () => {
+		const root = join( dir, 'php-comment' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		// 8.5 only appears in a comment — it must not count as coverage.
+		writeFileSync(
+			join( root, '.github', 'workflows', 'unit-tests.yml' ),
+			[
+				'jobs:',
+				'  test:',
+				'    strategy:',
+				'      matrix:',
+				'        wp: [6.9, 7.0]',
+				'        php: [8.2, 8.3, 8.4] # 8.5 dropped for now',
+			].join( '\n' )
+		);
+
+		const rule7 = validateIntegration( root ).results.find(
+			result => result.id === 'compatibility-matrix'
+		);
+		expect( rule7?.status ).toBe( 'fail' );
+		expect( rule7?.message ).toMatch( /PHP 8\.5/ );
+	} );
+
 	it( 'warns (not passes) rule 7 when a structured compatibility exception is claimed', () => {
 		const root = join( dir, 'compat-exception' );
 		mkdirSync( root, { recursive: true } );

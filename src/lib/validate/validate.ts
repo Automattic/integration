@@ -811,37 +811,55 @@ function claimsCompatibilityException( composer: ComposerJson | null ): boolean 
 }
 
 /**
- * Collect the PHP versions a CI workflow tests against. A version counts only
- * when it sits against a `php` / `php-version` key, so unrelated tokens
- * (mysql:8.4, a node 18.4 matrix, a pinned action tag) aren't mistaken for
- * coverage. Handles the three common GitHub Actions matrix forms: a same-line
- * scalar (`php: '8.5'`), a flow array (`php: [8.2, 8.3]`), and a block sequence
- * (`php:` followed by `- '8.2'` items on the next lines).
+ * The version tokens in a matrix key's same-line value. A flow array (`[…]`) is
+ * read to its closing bracket; any other value stops at the next flow-mapping
+ * entry boundary (`,` / `}`) or an inline `#` comment — so `wp: 6.9, php: '8.5'`
+ * doesn't bleed the PHP value into the WordPress scan, and a trailing comment's
+ * versions aren't mistaken for coverage.
  */
-function collectPhpVersions( workflowsText: string ): Set< string > {
+function valueTokens( rawValue: string, tokenRe: RegExp ): RegExpMatchArray | null {
+	const value = rawValue.trim();
+	if ( value.startsWith( '[' ) ) {
+		const end = value.indexOf( ']' );
+		return ( end === -1 ? value : value.slice( 1, end ) ).match( tokenRe );
+	}
+	return value.split( /[,}#]/ )[ 0 ].match( tokenRe );
+}
+
+/**
+ * Collect the version tokens a CI matrix lists against a given key (`php`, `wp`,
+ * …), scoped so unrelated tokens elsewhere in the workflow aren't counted — a
+ * bare `mysql:8.4` or a `node: [6.9, 7.0]` matrix must not read as PHP or
+ * WordPress coverage. Handles the three common GitHub Actions matrix forms: a
+ * same-line scalar (`php: '8.5'`), a flow array (`php: [8.2, 8.3]`), and a block
+ * sequence (`php:` then `- '8.2'` items on the next lines). Returns `x.y`
+ * version numbers plus the literal `latest`.
+ */
+function collectMatrixVersions( workflowsText: string, keyPattern: string ): Set< string > {
 	const versions = new Set< string >();
 	const lines = workflowsText.split( /\r?\n/ );
-	const keyRe = /php(?:[-_]version)?['"]?\s*[:=]\s*([^\n]*)/gi;
-	const versionRe = /\d+\.\d+/g;
+	// keyPattern is a fixed internal literal, so interpolation is safe.
+	// eslint-disable-next-line security/detect-non-literal-regexp
+	const keyRe = new RegExp( String.raw`\b(?:${ keyPattern })['"]?\s*[:=]\s*([^\n]*)`, 'gi' );
+	const tokenRe = /\d+\.\d+|latest/gi;
+	const itemRe = /^\s*-\s*['"]?(\d+\.\d+|latest)/i;
 
 	for ( let line = 0; line < lines.length; line++ ) {
 		for ( const key of lines[ line ].matchAll( keyRe ) ) {
-			const value = key[ 1 ].trim();
-			if ( value !== '' ) {
-				// Same-line scalar or flow array — pull every version token out of it.
-				for ( const version of value.match( versionRe ) ?? [] ) {
-					versions.add( version );
-				}
+			for ( const token of valueTokens( key[ 1 ], tokenRe ) ?? [] ) {
+				versions.add( token.toLowerCase() );
+			}
+			if ( key[ 1 ].trim() !== '' ) {
 				continue;
 			}
 			// Nothing follows the key: a block sequence carries the values on the
 			// next lines as `- 8.2` items. Read them until the sequence ends.
 			for ( let next = line + 1; next < lines.length; next++ ) {
-				const item = lines[ next ].match( /^\s*-\s*['"]?(\d+\.\d+)/ );
+				const item = itemRe.exec( lines[ next ] );
 				if ( ! item ) {
 					break;
 				}
-				versions.add( item[ 1 ] );
+				versions.add( item[ 1 ].toLowerCase() );
 			}
 		}
 	}
@@ -882,18 +900,24 @@ function checkCompatibilityMatrix( ctx: Context ): CheckResult {
 	}
 
 	const missing: string[] = [];
-	if ( ! /\b6\.9\b/.test( ctx.workflowsText ) ) {
+	// Scope the WordPress scan to a `wp` / `wordpress` matrix key, exactly as PHP
+	// is scoped below — a bare `6.9`/`7.0` elsewhere (a `node` matrix, an action
+	// tag, `runs-on: ubuntu-latest`) is not WordPress evidence. WP 7.0 in CI is
+	// often written as `wp: latest`, so that counts too.
+	const wpVersions = collectMatrixVersions(
+		ctx.workflowsText,
+		'w(?:p|ordpress)(?:[-_]versions?)?'
+	);
+	if ( ! wpVersions.has( '6.9' ) ) {
 		missing.push( 'WordPress 6.9' );
 	}
-	// WP 7.0 in CI is often expressed as "latest" against a WordPress version
-	// key (e.g. `wp: latest`). Match that form specifically so unrelated
-	// `latest` tokens — `runs-on: ubuntu-latest`, `mariadb:latest` — are not
-	// mistaken for WordPress version evidence.
-	const wpLatest = /\bw(?:p|ordpress)(?:[-_]version)?['":= ]+latest\b/i;
-	if ( ! /\b7\.0\b/.test( ctx.workflowsText ) && ! wpLatest.test( ctx.workflowsText ) ) {
+	if ( ! wpVersions.has( '7.0' ) && ! wpVersions.has( 'latest' ) ) {
 		missing.push( 'WordPress 7.0' );
 	}
-	const phpVersions = collectPhpVersions( ctx.workflowsText );
+	// Accept `php-versions` (plural) alongside `php` / `php-version` — the plural
+	// is the key `shivammathur/setup-php` examples use, so a conformant matrix
+	// must not be failed just for pluralizing it.
+	const phpVersions = collectMatrixVersions( ctx.workflowsText, 'php(?:[-_]versions?)?' );
 	for ( const php of [ '8.2', '8.3', '8.4', '8.5' ] ) {
 		if ( ! phpVersions.has( php ) ) {
 			missing.push( `PHP ${ php }` );
