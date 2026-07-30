@@ -396,6 +396,37 @@ describe( 'validateIntegration', () => {
 		expect( rule3?.details?.join( '\n' ) ).toMatch( /constant_name is malformed/ );
 	} );
 
+	it( 'rejects a YAML alias bomb manifest fast instead of hanging (rule 3)', () => {
+		const root = join( dir, 'manifest-alias-bomb' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		writeFileSync(
+			join( root, 'vip-manifest.yaml' ),
+			[
+				'manifest_version: 1',
+				'a: &a ["x","x","x","x","x","x","x","x","x"]',
+				'b: &b [*a,*a,*a,*a,*a,*a,*a,*a,*a]',
+				'c: &c [*b,*b,*b,*b,*b,*b,*b,*b,*b]',
+				'd: &d [*c,*c,*c,*c,*c,*c,*c,*c,*c]',
+				'e: &e [*d,*d,*d,*d,*d,*d,*d,*d,*d]',
+				'f: &f [*e,*e,*e,*e,*e,*e,*e,*e,*e]',
+				'g: &g [*f,*f,*f,*f,*f,*f,*f,*f,*f]',
+				'h: &h [*g,*g,*g,*g,*g,*g,*g,*g,*g]',
+				'i: &i [*h,*h,*h,*h,*h,*h,*h,*h,*h]',
+			].join( '\n' )
+		);
+
+		const start = Date.now();
+		const rule3 = validateIntegration( root ).results.find(
+			result => result.id === 'handoff-manifest'
+		);
+		// The old code walked the expanded alias tree and burned tens of seconds;
+		// rejecting at parse time must return effectively instantly.
+		expect( Date.now() - start ).toBeLessThan( 2000 );
+		expect( rule3?.status ).toBe( 'fail' );
+		expect( rule3?.message ).toMatch( /could not be read as YAML/ );
+	} );
+
 	it( 'fails rule 3 when manifest_kind is wrong', () => {
 		const root = join( dir, 'manifest-kind' );
 		mkdirSync( root, { recursive: true } );
@@ -744,6 +775,117 @@ describe( 'validateIntegration', () => {
 		);
 		expect( rule7?.status ).toBe( 'fail' );
 		expect( rule7?.message ).toMatch( /PHP 8\.4/ );
+		expect( rule7?.message ).toMatch( /PHP 8\.5/ );
+	} );
+
+	it( 'accepts a PHP matrix written as a YAML flow array for rule 7', () => {
+		const root = join( dir, 'php-flow-array' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		writeFileSync(
+			join( root, '.github', 'workflows', 'unit-tests.yml' ),
+			[
+				'jobs:',
+				'  test:',
+				'    strategy:',
+				'      matrix:',
+				'        wp: [6.9, 7.0]',
+				'        php: [8.2, 8.3, 8.4, 8.5]',
+			].join( '\n' )
+		);
+
+		expect( statusById( root )[ 'compatibility-matrix' ] ).toBe( 'pass' );
+	} );
+
+	it( 'accepts a PHP matrix written as a YAML block sequence for rule 7', () => {
+		const root = join( dir, 'php-block-sequence' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		writeFileSync(
+			join( root, '.github', 'workflows', 'unit-tests.yml' ),
+			[
+				'jobs:',
+				'  test:',
+				'    strategy:',
+				'      matrix:',
+				'        wp: [6.9, 7.0]',
+				'        php-version:',
+				"          - '8.2'",
+				"          - '8.3'",
+				"          - '8.4'",
+				"          - '8.5'",
+			].join( '\n' )
+		);
+
+		expect( statusById( root )[ 'compatibility-matrix' ] ).toBe( 'pass' );
+	} );
+
+	it( 'fails rule 7 when 6.9/7.0 sit against a non-WordPress key (no WP evidence)', () => {
+		const root = join( dir, 'php-wp-unscoped' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		// `node: [6.9, 7.0]` is not WordPress evidence — Rule 7 must not read it as
+		// WP coverage just because the tokens appear somewhere in the workflow.
+		writeFileSync(
+			join( root, '.github', 'workflows', 'unit-tests.yml' ),
+			[
+				'jobs:',
+				'  test:',
+				'    strategy:',
+				'      matrix:',
+				'        node: [6.9, 7.0]',
+				'        php: [8.2, 8.3, 8.4, 8.5]',
+			].join( '\n' )
+		);
+
+		const rule7 = validateIntegration( root ).results.find(
+			result => result.id === 'compatibility-matrix'
+		);
+		expect( rule7?.status ).toBe( 'fail' );
+		expect( rule7?.message ).toMatch( /WordPress 6\.9/ );
+		expect( rule7?.message ).toMatch( /WordPress 7\.0/ );
+	} );
+
+	it( 'accepts the `php-versions` (plural) matrix key for rule 7', () => {
+		const root = join( dir, 'php-versions-plural' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		writeFileSync(
+			join( root, '.github', 'workflows', 'unit-tests.yml' ),
+			[
+				'jobs:',
+				'  test:',
+				'    strategy:',
+				'      matrix:',
+				'        wp: [6.9, 7.0]',
+				"        php-versions: ['8.2', '8.3', '8.4', '8.5']",
+			].join( '\n' )
+		);
+
+		expect( statusById( root )[ 'compatibility-matrix' ] ).toBe( 'pass' );
+	} );
+
+	it( 'does not count PHP versions that only appear in a trailing comment', () => {
+		const root = join( dir, 'php-comment' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		// 8.5 only appears in a comment — it must not count as coverage.
+		writeFileSync(
+			join( root, '.github', 'workflows', 'unit-tests.yml' ),
+			[
+				'jobs:',
+				'  test:',
+				'    strategy:',
+				'      matrix:',
+				'        wp: [6.9, 7.0]',
+				'        php: [8.2, 8.3, 8.4] # 8.5 dropped for now',
+			].join( '\n' )
+		);
+
+		const rule7 = validateIntegration( root ).results.find(
+			result => result.id === 'compatibility-matrix'
+		);
+		expect( rule7?.status ).toBe( 'fail' );
 		expect( rule7?.message ).toMatch( /PHP 8\.5/ );
 	} );
 
