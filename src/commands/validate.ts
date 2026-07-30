@@ -15,6 +15,18 @@ export interface ValidateOptions {
 }
 
 export function validateCommand( pathArg: string | undefined, opts: ValidateOptions = {} ): void {
+	// An explicit but empty path (`validate ""`, or an unset shell variable) is a
+	// mistake, not a request to validate the current directory — reject it rather
+	// than silently checking cwd. An omitted argument still defaults to cwd.
+	if ( pathArg !== undefined && pathArg.trim() === '' ) {
+		console.error(
+			red(
+				'No path given. Pass an integration directory, or omit it to use the current directory.'
+			)
+		);
+		process.exitCode = 1;
+		return;
+	}
 	const root = resolve( pathArg ?? process.cwd() );
 
 	const format = opts.format ?? 'human';
