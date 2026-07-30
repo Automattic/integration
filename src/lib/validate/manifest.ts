@@ -124,7 +124,11 @@ export function inspectManifest( root: string ): ManifestInspection {
 
 	let parsed: unknown;
 	try {
-		parsed = load( readFileSync( join( root, file ), 'utf8' ) );
+		// Reject YAML anchors/aliases outright. A manifest never needs them, and
+		// nested aliases are a billion-laughs vector: js-yaml returns them as shared
+		// references cheaply, but the downstream walks (placeholder scan, Ajv) expand
+		// them into an exponential tree and hang. Failing at parse time closes it.
+		parsed = load( readFileSync( join( root, file ), 'utf8' ), { maxAliases: 0 } );
 	} catch ( error ) {
 		const reason = error instanceof Error ? error.message.split( '\n' )[ 0 ] : String( error );
 		return { file, parseError: reason, errors: [], parsed: null, placeholders: [] };

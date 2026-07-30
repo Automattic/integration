@@ -396,6 +396,37 @@ describe( 'validateIntegration', () => {
 		expect( rule3?.details?.join( '\n' ) ).toMatch( /constant_name is malformed/ );
 	} );
 
+	it( 'rejects a YAML alias bomb manifest fast instead of hanging (rule 3)', () => {
+		const root = join( dir, 'manifest-alias-bomb' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		writeFileSync(
+			join( root, 'vip-manifest.yaml' ),
+			[
+				'manifest_version: 1',
+				'a: &a ["x","x","x","x","x","x","x","x","x"]',
+				'b: &b [*a,*a,*a,*a,*a,*a,*a,*a,*a]',
+				'c: &c [*b,*b,*b,*b,*b,*b,*b,*b,*b]',
+				'd: &d [*c,*c,*c,*c,*c,*c,*c,*c,*c]',
+				'e: &e [*d,*d,*d,*d,*d,*d,*d,*d,*d]',
+				'f: &f [*e,*e,*e,*e,*e,*e,*e,*e,*e]',
+				'g: &g [*f,*f,*f,*f,*f,*f,*f,*f,*f]',
+				'h: &h [*g,*g,*g,*g,*g,*g,*g,*g,*g]',
+				'i: &i [*h,*h,*h,*h,*h,*h,*h,*h,*h]',
+			].join( '\n' )
+		);
+
+		const start = Date.now();
+		const rule3 = validateIntegration( root ).results.find(
+			result => result.id === 'handoff-manifest'
+		);
+		// The old code walked the expanded alias tree and burned tens of seconds;
+		// rejecting at parse time must return effectively instantly.
+		expect( Date.now() - start ).toBeLessThan( 2000 );
+		expect( rule3?.status ).toBe( 'fail' );
+		expect( rule3?.message ).toMatch( /could not be read as YAML/ );
+	} );
+
 	it( 'fails rule 3 when manifest_kind is wrong', () => {
 		const root = join( dir, 'manifest-kind' );
 		mkdirSync( root, { recursive: true } );
