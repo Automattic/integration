@@ -1,10 +1,10 @@
 /**
- * `a8c-integration init` — start a new integration.
+ * `vip-integration init` — start a new integration.
  *
  * Lays down the VIP Integrations Starter Kit as the project skeleton, collects
  * the same inputs `composer setup` collects (vendor + integration name), then
  * rewrites the example prefix set to the partner's names. The result is a
- * ready-to-edit integration; the developer runs `a8c-integration validate` when
+ * ready-to-edit integration; the developer runs `vip-integration validate` when
  * they are ready to check conformance.
  */
 
@@ -102,13 +102,8 @@ export async function initCommand( opts: InitOptions = {} ): Promise< void > {
 	try {
 		laySkeleton( target );
 		( { entryFile, prefix } = scaffoldTree( target, vendor, name ) );
-
-		// Give the fresh project its own clean git history.
-		try {
-			execFileSync( 'git', [ 'init', '--quiet' ], { cwd: target, stdio: 'ignore' } );
-		} catch {
-			// git init is a nicety; a scaffold without it is still usable.
-		}
+		// The scaffold is left as a plain directory, not a git repo — the partner
+		// initializes version control themselves when and how they want.
 	} catch ( error ) {
 		// A clone that dies partway or a scaffold that throws would otherwise leave
 		// a half-populated directory that blocks the next run. Remove what we laid
@@ -133,7 +128,7 @@ export async function initCommand( opts: InitOptions = {} ): Promise< void > {
 		`cd ${ target }`,
 		'composer install && npm install',
 		'Run it locally: vip dev-env create && vip dev-env start',
-		'Edit the integration, then run: a8c-integration validate',
+		'Edit the integration, then run: vip-integration validate',
 	] ) {
 		console.log( `  ${ cyan( '→' ) } ${ step }` );
 	}

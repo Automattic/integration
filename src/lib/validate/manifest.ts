@@ -1,82 +1,52 @@
 /**
  * Handoff-manifest validation for VIP partner integrations.
  *
- * The handoff manifest (`vip-handoff.yaml`) is the single file a partner fills
+ * The handoff manifest (`vip-manifest.yaml`) is the single file a partner fills
  * in so VIP can register and load their integration from the manifest alone —
  * without reading the plugin's code. VIP uses it to wire up the constant-backed
  * loader, the integration service registration + secret sync, and the
  * Integration Center catalog entry and config form.
  *
- * This module reads that file and checks that every field VIP needs for that
- * registration is present and well-formed. It is deliberately a presence and
- * shape check — it does not verify the values are correct (that a URL resolves,
- * a secret is real), only that the manifest gives VIP everything it must have
- * to register the integration without the plugin source.
+ * This module reads that file and validates it against `MANIFEST_SCHEMA`, the
+ * JSON Schema that is the single source of truth for the manifest's shape and
+ * constraints. It is a presence-and-shape check — it confirms the manifest
+ * gives VIP everything it must have, in the right form, to register the
+ * integration; it does not verify the values are correct (that a URL resolves,
+ * a secret is real).
  */
 
+import Ajv from 'ajv';
 import { load } from 'js-yaml';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { MANIFEST_PLACEHOLDER, MANIFEST_SCHEMA } from './manifest.schema';
+
+import type { ErrorObject, ValidateFunction } from 'ajv';
+
 /** Accepted manifest file names, checked at the integration root in order. */
-export const MANIFEST_FILENAMES = [ 'vip-handoff.yaml', 'vip-handoff.yml' ];
-
-/** The `manifest_kind` value that identifies a handoff manifest. */
-const MANIFEST_KIND = 'vip-integration-handoff';
-
-/** `runtime.wordpress_plugin.scope` values VIP knows how to load. */
-const VALID_SCOPES = [ 'site', 'network' ];
+export const MANIFEST_FILENAMES = [ 'vip-manifest.yaml', 'vip-manifest.yml' ];
 
 export interface ManifestInspection {
 	/** The manifest file name found at the root, or null when none exists. */
 	file: string | null;
 	/** Set when the file exists but is not parseable / not a mapping. */
 	parseError: string | null;
-	/** Required fields VIP consumes that are absent or empty. */
-	missing: string[];
-	/** Fields that are present but malformed (wrong shape or value). */
-	problems: string[];
+	/** Human-readable schema violations. Empty when the manifest is conformant. */
+	errors: string[];
+	/** The parsed manifest, or null when it was missing / unparseable. */
+	parsed: Record< string, unknown > | null;
+	/** Dotted paths whose string value still contains the init placeholder. */
+	placeholders: string[];
 }
 
-/** Required scalar paths, as dotted keys into the parsed manifest. */
-const REQUIRED_FIELDS = [
-	'manifest_version',
-	'manifest_kind',
-	'integration.slug',
-	'integration.display_name',
-	'integration.summary',
-	'integration.partner.name',
-	'integration.partner.support_contact',
-	'runtime.wordpress_plugin.folder',
-	'runtime.wordpress_plugin.entry_file',
-	'runtime.wordpress_plugin.php_namespace',
-	'runtime.wordpress_plugin.scope',
-	'runtime_config.constant_name',
-];
+// One compiled validator, reused across every inspection. allowUnionTypes lets
+// a field `default` accept a string, number, or boolean.
+const ajv = new Ajv( { allErrors: true, allowUnionTypes: true } );
+const validateManifest: ValidateFunction = ajv.compile( MANIFEST_SCHEMA );
 
 function isRecord( value: unknown ): value is Record< string, unknown > {
 	return typeof value === 'object' && value !== null && ! Array.isArray( value );
-}
-
-/** Read a dotted path out of a parsed manifest, or undefined if any hop misses. */
-function getPath( root: Record< string, unknown >, path: string ): unknown {
-	let current: unknown = root;
-	for ( const key of path.split( '.' ) ) {
-		if ( ! isRecord( current ) ) {
-			return undefined;
-		}
-		current = current[ key ];
-	}
-	return current;
-}
-
-/** A scalar counts as present only when it is not null/undefined and, for
- * strings, not blank. */
-function isPresent( value: unknown ): boolean {
-	if ( value === undefined || value === null ) {
-		return false;
-	}
-	return typeof value === 'string' ? value.trim() !== '' : true;
 }
 
 function findManifestFile( root: string ): string | null {
@@ -88,38 +58,58 @@ function findManifestFile( root: string ): string | null {
 	return null;
 }
 
-/** Check the shape of `runtime_config.fields`, appending any issues found. */
-function inspectConfigFields( manifest: Record< string, unknown >, problems: string[] ): void {
-	const fields = getPath( manifest, 'runtime_config.fields' );
-	if ( fields === undefined ) {
-		problems.push( 'runtime_config.fields is missing — declare at least one config field.' );
-		return;
-	}
-	if ( ! Array.isArray( fields ) || fields.length === 0 ) {
-		problems.push( 'runtime_config.fields must be a non-empty list of config fields.' );
-		return;
-	}
+/** The dotted manifest location an Ajv error points at, e.g. `integration.slug`. */
+function locationOf( error: ErrorObject ): string {
+	const path = error.instancePath.replace( /^\//, '' ).replace( /\//g, '.' );
+	return path === '' ? 'manifest' : path;
+}
 
-	fields.forEach( ( field, index ) => {
-		const label = `runtime_config.fields[${ index }]`;
-		if ( ! isRecord( field ) ) {
-			problems.push( `${ label } is not a mapping.` );
-			return;
+/** Turn one Ajv error into a message a partner can act on. */
+function describeError( error: ErrorObject ): string {
+	const where = locationOf( error );
+	switch ( error.keyword ) {
+		case 'required':
+			return `${ where } is missing required field "${ error.params.missingProperty }".`;
+		case 'additionalProperties':
+			return `${ where } has unknown field "${ error.params.additionalProperty }".`;
+		case 'const':
+			return `${ where } must be ${ JSON.stringify( error.params.allowedValue ) }.`;
+		case 'enum':
+			return `${ where } must be one of: ${ ( error.params.allowedValues as unknown[] ).join(
+				', '
+			) }.`;
+		case 'pattern':
+			return `${ where } is malformed (must match ${ error.params.pattern }).`;
+		case 'minItems':
+			return `${ where } must have at least ${ error.params.limit } item(s).`;
+		default:
+			return `${ where } ${ error.message ?? 'is invalid' }.`;
+	}
+}
+
+// The sentinel as a whole token, so a real value that merely embeds it as part
+// of a longer word (`REPLACE_ME_TOKEN`) isn't flagged as an unfilled placeholder.
+// MANIFEST_PLACEHOLDER is a fixed alphabetic sentinel, so interpolation is safe.
+// eslint-disable-next-line security/detect-non-literal-regexp
+const PLACEHOLDER_TOKEN = new RegExp( String.raw`\b${ MANIFEST_PLACEHOLDER }\b` );
+
+/** Collect dotted paths whose string value still holds the init placeholder. */
+function collectPlaceholders( value: unknown, path: string, out: string[] ): void {
+	if ( typeof value === 'string' ) {
+		if ( PLACEHOLDER_TOKEN.test( value ) ) {
+			out.push( path );
 		}
-		for ( const key of [ 'key', 'label', 'type' ] as const ) {
-			if ( ! isPresent( field[ key ] ) ) {
-				problems.push( `${ label } is missing "${ key }".` );
-			}
+		return;
+	}
+	if ( Array.isArray( value ) ) {
+		value.forEach( ( item, index ) => collectPlaceholders( item, `${ path }[${ index }]`, out ) );
+		return;
+	}
+	if ( isRecord( value ) ) {
+		for ( const [ key, child ] of Object.entries( value ) ) {
+			collectPlaceholders( child, path === '' ? key : `${ path }.${ key }`, out );
 		}
-		// An enum field is unusable in the Integration Center form without its
-		// allowed values, so require them explicitly.
-		if ( field.type === 'enum' ) {
-			const values = field.values;
-			if ( ! Array.isArray( values ) || values.length === 0 ) {
-				problems.push( `${ label } is an enum but declares no "values".` );
-			}
-		}
-	} );
+	}
 }
 
 /**
@@ -129,7 +119,7 @@ function inspectConfigFields( manifest: Record< string, unknown >, problems: str
 export function inspectManifest( root: string ): ManifestInspection {
 	const file = findManifestFile( root );
 	if ( ! file ) {
-		return { file: null, parseError: null, missing: [], problems: [] };
+		return { file: null, parseError: null, errors: [], parsed: null, placeholders: [] };
 	}
 
 	let parsed: unknown;
@@ -137,34 +127,26 @@ export function inspectManifest( root: string ): ManifestInspection {
 		parsed = load( readFileSync( join( root, file ), 'utf8' ) );
 	} catch ( error ) {
 		const reason = error instanceof Error ? error.message.split( '\n' )[ 0 ] : String( error );
-		return { file, parseError: reason, missing: [], problems: [] };
+		return { file, parseError: reason, errors: [], parsed: null, placeholders: [] };
 	}
 	if ( ! isRecord( parsed ) ) {
-		return { file, parseError: 'manifest is not a YAML mapping', missing: [], problems: [] };
+		return {
+			file,
+			parseError: 'manifest is not a YAML mapping',
+			errors: [],
+			parsed: null,
+			placeholders: [],
+		};
 	}
 
-	const missing = REQUIRED_FIELDS.filter( path => ! isPresent( getPath( parsed, path ) ) );
+	const placeholders: string[] = [];
+	collectPlaceholders( parsed, '', placeholders );
 
-	const problems: string[] = [];
-	const kind = getPath( parsed, 'manifest_kind' );
-	if ( isPresent( kind ) && kind !== MANIFEST_KIND ) {
-		problems.push( `manifest_kind must be "${ MANIFEST_KIND }" (got "${ String( kind ) }").` );
+	if ( validateManifest( parsed ) ) {
+		return { file, parseError: null, errors: [], parsed, placeholders };
 	}
-	const scope = getPath( parsed, 'runtime.wordpress_plugin.scope' );
-	if ( isPresent( scope ) && ! VALID_SCOPES.includes( String( scope ) ) ) {
-		problems.push(
-			`runtime.wordpress_plugin.scope must be one of ${ VALID_SCOPES.join( '/' ) } (got "${ String(
-				scope
-			) }").`
-		);
-	}
-	const constant = getPath( parsed, 'runtime_config.constant_name' );
-	if ( isPresent( constant ) && ! /^VIP_[A-Z0-9_]+_CONFIG$/.test( String( constant ) ) ) {
-		problems.push(
-			`runtime_config.constant_name must match VIP_*_CONFIG (got "${ String( constant ) }").`
-		);
-	}
-	inspectConfigFields( parsed, problems );
 
-	return { file, parseError: null, missing, problems };
+	// De-duplicate: the `enum`/`if` combo can surface the same underlying issue twice.
+	const errors = [ ...new Set( ( validateManifest.errors ?? [] ).map( describeError ) ) ];
+	return { file, parseError: null, errors, parsed, placeholders };
 }

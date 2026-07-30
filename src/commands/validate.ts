@@ -1,5 +1,5 @@
 /**
- * `a8c-integration validate [path]` — run the conformance checker against an
+ * `vip-integration validate [path]` — run the conformance checker against an
  * integration directory and print a human or JSON report. Exit code is 1 when
  * the integration is not conformant, so it gates CI.
  */

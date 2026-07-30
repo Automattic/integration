@@ -1,12 +1,12 @@
 # Releasing
 
-`a8c-integration` publishes to npm as [`@automattic/a8c-integration`](https://www.npmjs.com/package/@automattic/a8c-integration). Releases are cut from `trunk` and **published by CI, not from a laptop** — the flow mirrors [Automattic/commands](https://github.com/Automattic/commands): bump the version on a release branch, merge it, then trigger the publish workflow, which uses npm **trusted publishing** (OIDC — no long-lived token).
+`vip-integration` publishes to npm as [`@automattic/vip-integration`](https://www.npmjs.com/package/@automattic/vip-integration). Releases are cut from `trunk` and **published by CI, not from a laptop** — the flow mirrors [Automattic/commands](https://github.com/Automattic/commands): bump the version on a release branch, merge it, then trigger the publish workflow, which uses npm **trusted publishing** (OIDC — no long-lived token).
 
 ## What ships
 
 The `files` allowlist in `package.json` limits the published tarball to what a consumer needs:
 
-- `bin/a8c-integration` — the launcher shim
+- `bin/vip-integration` — the launcher shim
 - `dist/` — the compiled CLI
 - `README.md` and `docs/`
 
@@ -45,8 +45,8 @@ Before the first release, a repo/npm admin needs to:
 ## Verify
 
 ```bash
-npm view @automattic/a8c-integration version
-npx @automattic/a8c-integration@latest --version
+npm view @automattic/vip-integration version
+npx @automattic/vip-integration@latest --version
 ```
 
 ## Notes

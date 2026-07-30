@@ -18,6 +18,9 @@ function conformantManifest(): string {
 		'  partner:',
 		'    name: Acme',
 		'    support_contact: support@acme.example',
+		'documentation:',
+		'  public_url: https://acme.example/docs/widget',
+		'  support_url: https://acme.example/docs/widget/support',
 		'runtime:',
 		'  wordpress_plugin:',
 		'    folder: acme-widget',
@@ -38,6 +41,21 @@ function conformantManifest(): string {
 		'      values:',
 		'        - export',
 		'        - import',
+		'telemetry:',
+		'  prefix: acme_widget_',
+		'  default_properties:',
+		'    - plugin_version',
+		'  events:',
+		'    - name: acme_widget_sync_started',
+		'      type: tracks',
+		'      trigger: A sync starts.',
+		'      properties:',
+		'        - trigger',
+		'release:',
+		'  plugin_version: 1.0.0',
+		'  version_strategy: latest',
+		'  migration_required: false',
+		'  changelog: Initial release.',
 	].join( '\n' );
 }
 
@@ -72,7 +90,7 @@ function scaffoldConformant( root: string ): void {
 		`<?php\n/**\n * Plugin Name: Acme Widget\n */\nrequire_once __DIR__ . '/vendor/autoload.php';\n`
 	);
 
-	writeFileSync( join( root, 'vip-handoff.yaml' ), conformantManifest() );
+	writeFileSync( join( root, 'vip-manifest.yaml' ), conformantManifest() );
 
 	writeFileSync(
 		join( root, 'inc', 'class-config.php' ),
@@ -308,7 +326,7 @@ describe( 'validateIntegration', () => {
 		const root = join( dir, 'manifest-missing' );
 		mkdirSync( root, { recursive: true } );
 		scaffoldConformant( root );
-		rmSync( join( root, 'vip-handoff.yaml' ) );
+		rmSync( join( root, 'vip-manifest.yaml' ) );
 
 		expect( statusById( root )[ 'handoff-manifest' ] ).toBe( 'fail' );
 	} );
@@ -319,7 +337,7 @@ describe( 'validateIntegration', () => {
 		scaffoldConformant( root );
 		// Drop runtime_config.constant_name — VIP needs it to define the config.
 		writeFileSync(
-			join( root, 'vip-handoff.yaml' ),
+			join( root, 'vip-manifest.yaml' ),
 			conformantManifest().replace( '  constant_name: VIP_ACME_WIDGET_CONFIG\n', '' )
 		);
 
@@ -327,7 +345,7 @@ describe( 'validateIntegration', () => {
 			result => result.id === 'handoff-manifest'
 		);
 		expect( rule3?.status ).toBe( 'fail' );
-		expect( rule3?.details?.join( '\n' ) ).toMatch( /runtime_config\.constant_name/ );
+		expect( rule3?.details?.join( '\n' ) ).toMatch( /constant_name/ );
 	} );
 
 	it( 'fails rule 3 when an enum config field declares no values', () => {
@@ -335,7 +353,7 @@ describe( 'validateIntegration', () => {
 		mkdirSync( root, { recursive: true } );
 		scaffoldConformant( root );
 		writeFileSync(
-			join( root, 'vip-handoff.yaml' ),
+			join( root, 'vip-manifest.yaml' ),
 			conformantManifest().replace( /\n {6}values:[\s\S]*$/, '' )
 		);
 
@@ -343,7 +361,295 @@ describe( 'validateIntegration', () => {
 			result => result.id === 'handoff-manifest'
 		);
 		expect( rule3?.status ).toBe( 'fail' );
-		expect( rule3?.details?.join( '\n' ) ).toMatch( /enum/ );
+		expect( rule3?.details?.join( '\n' ) ).toMatch( /values/ );
+	} );
+
+	it( 'fails rule 3 when a manifest key is misspelled (unknown field)', () => {
+		const root = join( dir, 'manifest-typo' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		writeFileSync(
+			join( root, 'vip-manifest.yaml' ),
+			conformantManifest().replace( '    entry_file:', '    entryfile:' )
+		);
+
+		const rule3 = validateIntegration( root ).results.find(
+			result => result.id === 'handoff-manifest'
+		);
+		expect( rule3?.status ).toBe( 'fail' );
+		expect( rule3?.details?.join( '\n' ) ).toMatch( /unknown field "entryfile"/ );
+	} );
+
+	it( 'fails rule 3 when constant_name does not match VIP_*_CONFIG', () => {
+		const root = join( dir, 'manifest-bad-constant' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		writeFileSync(
+			join( root, 'vip-manifest.yaml' ),
+			conformantManifest().replace( 'VIP_ACME_WIDGET_CONFIG', 'ACME_WIDGET' )
+		);
+
+		const rule3 = validateIntegration( root ).results.find(
+			result => result.id === 'handoff-manifest'
+		);
+		expect( rule3?.status ).toBe( 'fail' );
+		expect( rule3?.details?.join( '\n' ) ).toMatch( /constant_name is malformed/ );
+	} );
+
+	it( 'fails rule 3 when manifest_kind is wrong', () => {
+		const root = join( dir, 'manifest-kind' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		writeFileSync(
+			join( root, 'vip-manifest.yaml' ),
+			conformantManifest().replace( 'vip-integration-handoff', 'something-else' )
+		);
+
+		const rule3 = validateIntegration( root ).results.find(
+			result => result.id === 'handoff-manifest'
+		);
+		expect( rule3?.status ).toBe( 'fail' );
+		expect( rule3?.details?.join( '\n' ) ).toMatch( /manifest_kind must be/ );
+	} );
+
+	it( 'fails rule 3 when the documentation section is missing', () => {
+		const root = join( dir, 'manifest-no-docs' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		writeFileSync(
+			join( root, 'vip-manifest.yaml' ),
+			conformantManifest().replace(
+				'documentation:\n  public_url: https://acme.example/docs/widget\n  support_url: https://acme.example/docs/widget/support\n',
+				''
+			)
+		);
+
+		const rule3 = validateIntegration( root ).results.find(
+			result => result.id === 'handoff-manifest'
+		);
+		expect( rule3?.status ).toBe( 'fail' );
+		expect( rule3?.details?.join( '\n' ) ).toMatch( /missing required field "documentation"/ );
+	} );
+
+	it( 'fails rule 3 when documentation.public_url is not a URL', () => {
+		const root = join( dir, 'manifest-bad-doc-url' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		writeFileSync(
+			join( root, 'vip-manifest.yaml' ),
+			conformantManifest().replace( 'https://acme.example/docs/widget/support', 'not-a-url' )
+		);
+
+		const rule3 = validateIntegration( root ).results.find(
+			result => result.id === 'handoff-manifest'
+		);
+		expect( rule3?.status ).toBe( 'fail' );
+		expect( rule3?.details?.join( '\n' ) ).toMatch( /support_url is malformed/ );
+	} );
+
+	it( 'fails rule 3 when the telemetry prefix does not end in an underscore', () => {
+		const root = join( dir, 'manifest-bad-telemetry' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		writeFileSync(
+			join( root, 'vip-manifest.yaml' ),
+			conformantManifest().replace( 'prefix: acme_widget_', 'prefix: acme_widget' )
+		);
+
+		const rule3 = validateIntegration( root ).results.find(
+			result => result.id === 'handoff-manifest'
+		);
+		expect( rule3?.status ).toBe( 'fail' );
+		expect( rule3?.details?.join( '\n' ) ).toMatch( /prefix is malformed/ );
+	} );
+
+	it( 'passes rule 3 with no telemetry section (telemetry is optional)', () => {
+		const root = join( dir, 'manifest-no-telemetry' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		writeFileSync(
+			join( root, 'vip-manifest.yaml' ),
+			conformantManifest().replace(
+				'telemetry:\n  prefix: acme_widget_\n  default_properties:\n    - plugin_version\n  events:\n    - name: acme_widget_sync_started\n      type: tracks\n      trigger: A sync starts.\n      properties:\n        - trigger\n',
+				''
+			)
+		);
+
+		expect( statusById( root )[ 'handoff-manifest' ] ).toBe( 'pass' );
+	} );
+
+	it( 'fails rule 3 when release.plugin_version is not semver', () => {
+		const root = join( dir, 'manifest-bad-version' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		writeFileSync(
+			join( root, 'vip-manifest.yaml' ),
+			conformantManifest().replace( 'plugin_version: 1.0.0', 'plugin_version: v1' )
+		);
+
+		const rule3 = validateIntegration( root ).results.find(
+			result => result.id === 'handoff-manifest'
+		);
+		expect( rule3?.status ).toBe( 'fail' );
+		expect( rule3?.details?.join( '\n' ) ).toMatch( /plugin_version is malformed/ );
+	} );
+
+	it( 'passes rule 3 when a config field declares autogen and note', () => {
+		const root = join( dir, 'manifest-autogen' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		writeFileSync(
+			join( root, 'vip-manifest.yaml' ),
+			conformantManifest().replace(
+				'    - key: api_base_url\n      label: API base URL\n      type: url\n      required: true',
+				'    - key: api_base_url\n      label: API base URL\n      type: url\n      required: true\n      autogen: false\n      note: Provided by the vendor.'
+			)
+		);
+
+		expect( statusById( root )[ 'handoff-manifest' ] ).toBe( 'pass' );
+	} );
+
+	it( 'fails rule 3 when autogen is not a boolean', () => {
+		const root = join( dir, 'manifest-bad-autogen' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		writeFileSync(
+			join( root, 'vip-manifest.yaml' ),
+			conformantManifest().replace(
+				'      required: true\n    - key: sync_mode',
+				'      required: true\n      autogen: not-a-bool\n    - key: sync_mode'
+			)
+		);
+
+		const rule3 = validateIntegration( root ).results.find(
+			result => result.id === 'handoff-manifest'
+		);
+		expect( rule3?.status ).toBe( 'fail' );
+		expect( rule3?.details?.join( '\n' ) ).toMatch( /autogen/ );
+	} );
+
+	it( 'fails rule 3 when the manifest still has an init placeholder', () => {
+		const root = join( dir, 'manifest-placeholder' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		writeFileSync(
+			join( root, 'vip-manifest.yaml' ),
+			conformantManifest().replace(
+				'support_contact: support@acme.example',
+				'support_contact: REPLACE_ME'
+			)
+		);
+
+		const rule3 = validateIntegration( root ).results.find(
+			result => result.id === 'handoff-manifest'
+		);
+		expect( rule3?.status ).toBe( 'fail' );
+		expect( rule3?.details?.join( '\n' ) ).toMatch( /support_contact.*REPLACE_ME/ );
+	} );
+
+	it( 'does not flag a real value that merely embeds the placeholder token', () => {
+		const root = join( dir, 'manifest-placeholder-embedded' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		writeFileSync(
+			join( root, 'vip-manifest.yaml' ),
+			conformantManifest().replace(
+				'changelog: Initial release.',
+				'changelog: Removed the REPLACE_ME_TOKEN debug flag.'
+			)
+		);
+
+		expect( statusById( root )[ 'handoff-manifest' ] ).toBe( 'pass' );
+	} );
+
+	it( 'warns without blocking conformance when a REQUIRED_FIELDS key is missing from the manifest', () => {
+		const root = join( dir, 'manifest-config-missing' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		writeFileSync(
+			join( root, 'inc', 'class-config.php' ),
+			"<?php\nfinal class Config {\n\tpublic const CONSTANT_NAME = 'VIP_ACME_WIDGET_CONFIG';\n\tpublic const REQUIRED_FIELDS = [ 'api_base_url', 'webhook_secret' ];\n}\n"
+		);
+
+		const report = validateIntegration( root );
+		const rule3 = report.results.find( result => result.id === 'handoff-manifest' );
+		expect( rule3?.status ).toBe( 'warn' );
+		expect( rule3?.details?.join( '\n' ) ).toMatch( /webhook_secret.*not declared/ );
+		// The cross-check is heuristic, so it must not fail an otherwise-conformant integration.
+		expect( report.conformant ).toBe( true );
+	} );
+
+	it( 'warns without blocking conformance when a SENSITIVE_FIELDS key is not typed secret', () => {
+		const root = join( dir, 'manifest-config-secret' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		writeFileSync(
+			join( root, 'inc', 'class-config.php' ),
+			"<?php\nfinal class Config {\n\tpublic const CONSTANT_NAME = 'VIP_ACME_WIDGET_CONFIG';\n\tpublic const SENSITIVE_FIELDS = [ 'api_base_url' ];\n}\n"
+		);
+
+		const report = validateIntegration( root );
+		const rule3 = report.results.find( result => result.id === 'handoff-manifest' );
+		expect( rule3?.status ).toBe( 'warn' );
+		expect( rule3?.details?.join( '\n' ) ).toMatch( /api_base_url.*secret/ );
+		expect( report.conformant ).toBe( true );
+	} );
+
+	it( 'passes rule 3 when the config contract matches the manifest', () => {
+		const root = join( dir, 'manifest-config-ok' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		writeFileSync(
+			join( root, 'inc', 'class-config.php' ),
+			"<?php\nfinal class Config {\n\tpublic const CONSTANT_NAME = 'VIP_ACME_WIDGET_CONFIG';\n\tpublic const REQUIRED_FIELDS = [ 'api_base_url' ];\n}\n"
+		);
+
+		expect( statusById( root )[ 'handoff-manifest' ] ).toBe( 'pass' );
+	} );
+
+	it( 'ignores a REQUIRED_FIELDS mention that lives only in a PHP comment', () => {
+		const root = join( dir, 'manifest-config-comment' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		writeFileSync(
+			join( root, 'inc', 'class-config.php' ),
+			"<?php\n/**\n * Example: REQUIRED_FIELDS = [ 'webhook_secret' ] would force that key.\n */\nfinal class Config {\n\t// SENSITIVE_FIELDS = [ 'api_base_url' ] is documented here, not declared.\n\tpublic const CONSTANT_NAME = 'VIP_ACME_WIDGET_CONFIG';\n\tpublic const REQUIRED_FIELDS = [ 'api_base_url' ];\n}\n"
+		);
+
+		expect( statusById( root )[ 'handoff-manifest' ] ).toBe( 'pass' );
+	} );
+
+	it( 'ignores an unrelated constant whose name ends in REQUIRED_FIELDS', () => {
+		const root = join( dir, 'manifest-config-suffix' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		// Sorts before class-config.php, so first-match order would pick it up.
+		writeFileSync(
+			join( root, 'inc', 'aaa-flags.php' ),
+			"<?php\nfinal class Flags {\n\tpublic const CUSTOM_REQUIRED_FIELDS = [ 'ghost_field' ];\n\tpublic const APP_SENSITIVE_FIELDS = [ 'api_base_url' ];\n}\n"
+		);
+		writeFileSync(
+			join( root, 'inc', 'class-config.php' ),
+			"<?php\nfinal class Config {\n\tpublic const CONSTANT_NAME = 'VIP_ACME_WIDGET_CONFIG';\n\tpublic const REQUIRED_FIELDS = [ 'api_base_url' ];\n}\n"
+		);
+
+		expect( statusById( root )[ 'handoff-manifest' ] ).toBe( 'pass' );
+	} );
+
+	it( 'reads a double-quoted config contract', () => {
+		const root = join( dir, 'manifest-config-double-quote' );
+		mkdirSync( root, { recursive: true } );
+		scaffoldConformant( root );
+		writeFileSync(
+			join( root, 'inc', 'class-config.php' ),
+			'<?php\nfinal class Config {\n\tpublic const CONSTANT_NAME = "VIP_ACME_WIDGET_CONFIG";\n\tpublic const REQUIRED_FIELDS = [ "webhook_secret" ];\n}\n'
+		);
+
+		const rule3 = validateIntegration( root ).results.find(
+			result => result.id === 'handoff-manifest'
+		);
+		expect( rule3?.status ).toBe( 'warn' );
+		expect( rule3?.details?.join( '\n' ) ).toMatch( /webhook_secret.*not declared/ );
 	} );
 
 	it( 'fails rule 7 when compatibility is only prose, with no CI matrix', () => {

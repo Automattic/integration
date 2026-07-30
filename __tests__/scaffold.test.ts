@@ -140,6 +140,43 @@ describe( 'scaffoldTree', () => {
 		expect( result.changed ).toBeGreaterThanOrEqual( 3 );
 	} );
 
+	it( 'personalizes derivable manifest fields and placeholders the rest', () => {
+		const root = join( dir, 'manifest' );
+		mkdirSync( root, { recursive: true } );
+		writeFileSync(
+			join( root, 'vip-manifest.yaml' ),
+			[
+				'# yaml-language-server: $schema=./vip-manifest.schema.json',
+				'integration:',
+				'  slug: example-integration',
+				'  summary: Reference integration built from the VIP Integrations Starter Kit.',
+				'  partner:',
+				'    support_contact: support@example.com',
+				'documentation:',
+				'  public_url: https://example.com/docs/example-integration',
+				'  support_url: https://example.com/docs/example-integration/support',
+				'release:',
+				'  changelog: Initial VIP integration starter kit example.',
+				'',
+			].join( '\n' )
+		);
+
+		scaffoldTree( root, 'Acme', 'Content Sync' );
+
+		const manifest = readFileSync( join( root, 'vip-manifest.yaml' ), 'utf8' );
+		// Derivable fields get real values.
+		expect( manifest ).toContain( 'summary: Content Sync integration for WordPress VIP.' );
+		expect( manifest ).toContain( 'changelog: Initial release.' );
+		// Partner-only fields become placeholders so validate fails until filled.
+		expect( manifest ).toContain( 'support_contact: REPLACE_ME' );
+		expect( manifest ).toContain( 'public_url: https://REPLACE_ME' );
+		expect( manifest ).toContain( 'support_url: https://REPLACE_ME' );
+		// The schema modeline comment survives the edit.
+		expect( manifest ).toContain( '# yaml-language-server: $schema=./vip-manifest.schema.json' );
+		// The token pass still ran: the example slug was rewritten.
+		expect( manifest ).toContain( 'slug: content-sync' );
+	} );
+
 	it( 'leaves a binary file untouched even when it contains a token', () => {
 		const root = join( dir, 'binary' );
 		mkdirSync( root, { recursive: true } );
