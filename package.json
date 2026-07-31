@@ -1,6 +1,6 @@
 {
   "name": "@automattic/vip-integration",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "CLI to scaffold and validate WordPress VIP Integration Center add-ons.",
   "keywords": [
     "automattic",
@@ -10,13 +10,13 @@
     "cli",
     "conformance"
   ],
-  "homepage": "https://github.com/Automattic/integration#readme",
+  "homepage": "https://github.com/Automattic/vip-integration#readme",
   "bugs": {
-    "url": "https://github.com/Automattic/integration/issues"
+    "url": "https://github.com/Automattic/vip-integration/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Automattic/integration.git"
+    "url": "git+https://github.com/Automattic/vip-integration.git"
   },
   "author": "Automattic Inc.",
   "license": "MIT",
