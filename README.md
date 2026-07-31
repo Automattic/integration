@@ -29,7 +29,7 @@ Requires Node.js 20+.
 vip-integration init
 ```
 
-Interactive — it asks for your **vendor name** and **integration name**, always builds from the canonical [VIP Integrations Starter Kit](https://github.com/Automattic/vip-integrations-starter-kit) (its default branch, no git history pulled), rewrites the example prefix set to your names, and renames the entry file. You can also pass the answers as flags:
+Interactive — it asks for your **vendor name** and **integration name**, always builds from the canonical [VIP Integrations Starter Kit](https://github.com/Automattic/vip-integrations-starter-kit) (pinned to its latest published release, no git history pulled), rewrites the example prefix set to your names, and renames the entry file. You can also pass the answers as flags:
 
 ```bash
 vip-integration init --vendor "WordPress" --name "Content Sync"
