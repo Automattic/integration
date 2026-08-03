@@ -29,23 +29,46 @@ const STARTER_KIT_URL = 'https://github.com/Automattic/vip-integrations-starter-
 const STARTER_KIT_SOURCE_ENV = 'A8C_STARTER_KIT_SOURCE';
 
 /**
- * The Starter Kit's newest release tag, read straight from the remote's tag list
- * with the `git` we already shell out to — no GitHub API, no auth. `init` pins
- * to this so it builds from the latest released, tested version rather than the
- * moving `main` tip. `--sort=-v:refname` orders tags newest-first by version;
- * `--refs` drops the peeled `^{}` duplicates.
+ * Pick the newest tag out of `git ls-remote --tags --refs --sort=...` output:
+ * the first line is the newest version tag, and we strip the ref prefix down to
+ * the bare tag name. Throws when the remote lists no tags to pin to. Kept pure
+ * and separate from the `git` call so it can be unit-tested against real
+ * `ls-remote` output, including the no-tags case.
  */
-function latestReleaseTag( source: string ): string {
-	const output = execFileSync(
-		'git',
-		[ 'ls-remote', '--tags', '--refs', '--sort=-v:refname', '--', source ],
-		{ encoding: 'utf8' }
-	);
-	const newest = output.split( '\n', 1 )[ 0 ].split( 'refs/tags/' )[ 1 ]?.trim();
+export function parseLatestReleaseTag( lsRemoteOutput: string, source: string ): string {
+	const newest = lsRemoteOutput.split( '\n', 1 )[ 0 ].split( 'refs/tags/' )[ 1 ]?.trim();
 	if ( ! newest ) {
 		throw new Error( `The Starter Kit (${ source }) has no release tags to pin to.` );
 	}
 	return newest;
+}
+
+/**
+ * The Starter Kit's newest release tag, read straight from the remote's tag list
+ * with the `git` we already shell out to — no GitHub API, no auth. `init` pins
+ * to this so it builds from the latest released, tested version rather than the
+ * moving `main` tip. `--sort=-v:refname` orders tags newest-first by version and
+ * `versionsort.suffix=-` keeps pre-releases (e.g. `1.1.0-rc1`) sorting below
+ * their final release, so a partner never gets pinned to an RC; `--refs` drops
+ * the peeled `^{}` duplicates. stderr inherits so a network/git failure surfaces
+ * git's own message rather than a bare "Command failed".
+ */
+function latestReleaseTag( source: string ): string {
+	const output = execFileSync(
+		'git',
+		[
+			'-c',
+			'versionsort.suffix=-',
+			'ls-remote',
+			'--tags',
+			'--refs',
+			'--sort=-v:refname',
+			'--',
+			source,
+		],
+		{ encoding: 'utf8', stdio: [ 'ignore', 'pipe', 'inherit' ] }
+	);
+	return parseLatestReleaseTag( output, source );
 }
 
 export interface InitOptions {
@@ -134,7 +157,7 @@ export async function initCommand( opts: InitOptions = {} ): Promise< void > {
 	// pin to the Starter Kit's latest release tag, not the moving `main` tip.
 	const override = process.env[ STARTER_KIT_SOURCE_ENV ];
 	const source = override ?? STARTER_KIT_URL;
-	const ref = override ? undefined : latestReleaseTag( STARTER_KIT_URL );
+	const ref = override ? undefined : latestReleaseTag( source );
 
 	console.log(
 		gray( `Laying down the VIP Starter Kit${ ref ? ` (${ ref })` : '' } into ${ target }` )
