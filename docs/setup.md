@@ -5,7 +5,7 @@ How to build and run `vip-integration` from source.
 ## Prerequisites
 
 - Node.js — the version is pinned in [`.nvmrc`](../.nvmrc) (currently 22). The package supports Node 20 or newer (`engines` in `package.json`).
-- [pnpm](https://pnpm.io) — this repo uses pnpm, pinned via `packageManager` in `package.json`. With a recent Node, `corepack enable pnpm` installs the matching version.
+- [pnpm](https://pnpm.io) — this repo pins its exact pnpm version via `packageManager` in `package.json` (currently `pnpm@10.14.0`). Run installs through [Corepack](https://nodejs.org/api/corepack.html), which ships with Node and uses that pinned version: `corepack enable` once, then plain `pnpm ...` resolves to it.
 - `git` on your `PATH` (`init` clones the Starter Kit with it)
 
 ## Install dependencies
@@ -18,6 +18,20 @@ pnpm install
 ```
 
 If you don't use [nvm](https://github.com/nvm-sh/nvm), just make sure your Node matches `.nvmrc` (or is at least the `engines` floor).
+
+### pnpm version mismatch
+
+If `pnpm install` fails with either of these:
+
+```
+The "pnpm" field in package.json is no longer read by pnpm ...
+The packageManager dependency "pnpm@10.14.0" ... must use a registry package path ...
+```
+
+a newer pnpm (11+) installed globally is running instead of the pinned 10.x —
+pnpm 11 dropped reading the `pnpm` field from `package.json` and validates the
+lockfile differently. Let Corepack run the pinned version instead: `corepack
+enable` then `pnpm install`, or one-shot `corepack pnpm install`.
 
 ## Build
 
