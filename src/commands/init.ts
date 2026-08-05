@@ -29,18 +29,31 @@ const STARTER_KIT_URL = 'https://github.com/Automattic/vip-integrations-starter-
 const STARTER_KIT_SOURCE_ENV = 'A8C_STARTER_KIT_SOURCE';
 
 /**
- * Pick the newest tag out of `git ls-remote --tags --refs --sort=...` output:
- * the first line is the newest version tag, and we strip the ref prefix down to
- * the bare tag name. Throws when the remote lists no tags to pin to. Kept pure
- * and separate from the `git` call so it can be unit-tested against real
- * `ls-remote` output, including the no-tags case.
+ * A final release tag: `1.2.3` or `v1.2.3`, nothing after the patch number.
+ * Pre-releases carry a `-<suffix>` (`1.1.0-rc1`, `3.25.3-dev.0`) and are
+ * deliberately excluded — `init` pins to released, tested versions only. Note
+ * that git's version sort can't do this for us: a pre-release is a *higher*
+ * version than the last release (its final tag doesn't exist yet), so it sorts
+ * on top; the only reliable filter is to reject the suffix outright.
+ */
+const RELEASE_TAG = /^v?\d+\.\d+\.\d+$/;
+
+/**
+ * Pick the newest final-release tag out of `git ls-remote --tags --refs
+ * --sort=-v:refname` output. Lines arrive newest-first by version, so we walk
+ * them and return the first plain release tag, skipping any pre-release/`-dev`
+ * tag that outranks it. Throws when no release tag exists. Kept pure and
+ * separate from the `git` call so it can be unit-tested against real `ls-remote`
+ * output, including the pre-release-only and no-tags cases.
  */
 export function parseLatestReleaseTag( lsRemoteOutput: string, source: string ): string {
-	const newest = lsRemoteOutput.split( '\n', 1 )[ 0 ].split( 'refs/tags/' )[ 1 ]?.trim();
-	if ( ! newest ) {
-		throw new Error( `The Starter Kit (${ source }) has no release tags to pin to.` );
+	for ( const line of lsRemoteOutput.split( '\n' ) ) {
+		const tag = line.split( 'refs/tags/' )[ 1 ]?.trim();
+		if ( tag && RELEASE_TAG.test( tag ) ) {
+			return tag;
+		}
 	}
-	return newest;
+	throw new Error( `The Starter Kit (${ source }) has no release tags to pin to.` );
 }
 
 /**
@@ -48,24 +61,14 @@ export function parseLatestReleaseTag( lsRemoteOutput: string, source: string ):
  * with the `git` we already shell out to — no GitHub API, no auth. `init` pins
  * to this so it builds from the latest released, tested version rather than the
  * moving `main` tip. `--sort=-v:refname` orders tags newest-first by version and
- * `versionsort.suffix=-` keeps pre-releases (e.g. `1.1.0-rc1`) sorting below
- * their final release, so a partner never gets pinned to an RC; `--refs` drops
- * the peeled `^{}` duplicates. stderr inherits so a network/git failure surfaces
- * git's own message rather than a bare "Command failed".
+ * `--refs` drops the peeled `^{}` duplicates; `parseLatestReleaseTag` then skips
+ * any pre-release tag. stderr inherits so a network/git failure surfaces git's
+ * own message rather than a bare "Command failed".
  */
 function latestReleaseTag( source: string ): string {
 	const output = execFileSync(
 		'git',
-		[
-			'-c',
-			'versionsort.suffix=-',
-			'ls-remote',
-			'--tags',
-			'--refs',
-			'--sort=-v:refname',
-			'--',
-			source,
-		],
+		[ 'ls-remote', '--tags', '--refs', '--sort=-v:refname', '--', source ],
 		{ encoding: 'utf8', stdio: [ 'ignore', 'pipe', 'inherit' ] }
 	);
 	return parseLatestReleaseTag( output, source );
