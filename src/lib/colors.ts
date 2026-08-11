@@ -4,11 +4,11 @@
  * set, which also keeps them out of piped/CI output and test assertions.
  */
 
-const enabled = Boolean( process.stdout.isTTY ) && ! process.env.NO_COLOR;
-
 function wrap( open: number, close: number ): ( text: string ) => string {
-	return ( text: string ): string =>
-		enabled ? `\x1b[${ open }m${ text }\x1b[${ close }m` : text;
+	return ( text: string ): string => {
+		const enabled = Boolean( process.stdout.isTTY ) && ! process.env.NO_COLOR;
+		return enabled ? `\x1b[${ open }m${ text }\x1b[${ close }m` : text;
+	};
 }
 
 export const green = wrap( 32, 39 );

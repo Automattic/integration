@@ -1,4 +1,16 @@
-import { parseLatestReleaseTag } from '../src/commands/init';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { stripVTControlCharacters } from 'node:util';
+
+const mockQuestion = jest.fn< Promise< string >, [ string ] >();
+const mockClose = jest.fn();
+
+jest.mock( 'node:readline/promises', () => ( {
+	createInterface: jest.fn( () => ( { question: mockQuestion, close: mockClose } ) ),
+} ) );
+
+import { initCommand, parseLatestReleaseTag } from '../src/commands/init';
 
 const SOURCE = 'https://github.com/Automattic/vip-integrations-starter-kit.git';
 
@@ -53,5 +65,182 @@ describe( 'parseLatestReleaseTag', () => {
 		expect( () => parseLatestReleaseTag( 'hash\trefs/heads/trunk', SOURCE ) ).toThrow(
 			/no release tags/
 		);
+	} );
+} );
+
+describe( 'initCommand', () => {
+	let root: string;
+	let starterKit: string;
+	let stdinTTY: PropertyDescriptor | undefined;
+	let stdoutTTY: PropertyDescriptor | undefined;
+	let starterKitSource: string | undefined;
+	let noColor: string | undefined;
+
+	beforeAll( () => {
+		root = mkdtempSync( join( tmpdir(), 'vip-integration-init-' ) );
+		starterKit = join( __dirname, '..' );
+	} );
+
+	beforeEach( () => {
+		stdinTTY = Object.getOwnPropertyDescriptor( process.stdin, 'isTTY' );
+		stdoutTTY = Object.getOwnPropertyDescriptor( process.stdout, 'isTTY' );
+		starterKitSource = process.env.A8C_STARTER_KIT_SOURCE;
+		noColor = process.env.NO_COLOR;
+		process.env.A8C_STARTER_KIT_SOURCE = starterKit;
+		Object.defineProperty( process.stdin, 'isTTY', { configurable: true, value: true } );
+		mockQuestion.mockReset();
+		mockClose.mockReset();
+	} );
+
+	afterEach( () => {
+		if ( stdinTTY ) {
+			Object.defineProperty( process.stdin, 'isTTY', stdinTTY );
+		} else {
+			Reflect.deleteProperty( process.stdin, 'isTTY' );
+		}
+		if ( stdoutTTY ) {
+			Object.defineProperty( process.stdout, 'isTTY', stdoutTTY );
+		} else {
+			Reflect.deleteProperty( process.stdout, 'isTTY' );
+		}
+		if ( starterKitSource === undefined ) {
+			Reflect.deleteProperty( process.env, 'A8C_STARTER_KIT_SOURCE' );
+		} else {
+			process.env.A8C_STARTER_KIT_SOURCE = starterKitSource;
+		}
+		if ( noColor === undefined ) {
+			Reflect.deleteProperty( process.env, 'NO_COLOR' );
+		} else {
+			process.env.NO_COLOR = noColor;
+		}
+		jest.restoreAllMocks();
+	} );
+
+	afterAll( () => {
+		rmSync( root, { recursive: true, force: true } );
+	} );
+
+	it( 'uses ANSI colors when stdout supports them', async () => {
+		const target = join( root, 'color-result' );
+		const log = jest.spyOn( console, 'log' ).mockImplementation();
+		Object.defineProperty( process.stdout, 'isTTY', { configurable: true, value: true } );
+		Reflect.deleteProperty( process.env, 'NO_COLOR' );
+
+		await initCommand( { vendor: 'Acme', name: 'Content Sync', dir: target } );
+
+		const output = log.mock.calls.flat().join( '\n' );
+		expect( output ).toContain( '\x1b[36mcomposer install && npm install\x1b[39m' );
+		expect( output ).toContain( '\x1b[36mvip-integration validate\x1b[39m' );
+	} );
+
+	it( 'uses plain text when NO_COLOR disables ANSI colors', async () => {
+		const target = join( root, 'no-color-result' );
+		const log = jest.spyOn( console, 'log' ).mockImplementation();
+		Object.defineProperty( process.stdout, 'isTTY', { configurable: true, value: true } );
+		process.env.NO_COLOR = '1';
+
+		await initCommand( { vendor: 'Acme', name: 'Content Sync', dir: target } );
+
+		const output = log.mock.calls.flat().join( '\n' );
+		expect( output ).not.toContain( '\x1b[' );
+		expect( output ).toContain( 'composer install && npm install' );
+		expect( output ).toContain( 'vip-integration validate' );
+	} );
+
+	it( 'explains init and each value before asking an interactive user', async () => {
+		const target = join( root, 'interactive-result' );
+		const log = jest.spyOn( console, 'log' ).mockImplementation();
+		mockQuestion.mockResolvedValueOnce( 'Acme' ).mockResolvedValueOnce( 'Content Sync' );
+
+		await initCommand( { dir: target } );
+
+		const output = stripVTControlCharacters( log.mock.calls.flat().join( '\n' ) );
+		expect( output ).toContain( 'Welcome to vip-integration init' );
+		expect( output ).toContain( 'latest released VIP Integrations Starter Kit' );
+		expect( output ).toContain( 'new or empty target directory' );
+		expect( output ).toContain( 'without the Starter Kit Git history' );
+		expect( output ).toContain( 'package vendor and PHP namespace prefix' );
+		expect( output ).toContain(
+			'package name, namespace, code prefixes, slug, config constant, and default directory'
+		);
+
+		const welcomeCall = log.mock.calls.findIndex( call =>
+			String( call[ 0 ] ).includes( 'Welcome' )
+		);
+		const vendorCall = log.mock.calls.findIndex( call =>
+			String( call[ 0 ] ).includes( 'package vendor' )
+		);
+		const integrationCall = log.mock.calls.findIndex( call =>
+			String( call[ 0 ] ).includes( 'package name' )
+		);
+		expect( stripVTControlCharacters( String( log.mock.calls[ vendorCall ][ 0 ] ) ) ).toMatch(
+			/^ {2}Use/
+		);
+		expect( stripVTControlCharacters( String( log.mock.calls[ integrationCall ][ 0 ] ) ) ).toMatch(
+			/^ {2}Use/
+		);
+		expect( log.mock.invocationCallOrder[ welcomeCall ] ).toBeLessThan(
+			mockQuestion.mock.invocationCallOrder[ 0 ]
+		);
+		expect( log.mock.invocationCallOrder[ vendorCall ] ).toBeLessThan(
+			mockQuestion.mock.invocationCallOrder[ 0 ]
+		);
+		expect( log.mock.invocationCallOrder[ integrationCall ] ).toBeGreaterThan(
+			mockQuestion.mock.invocationCallOrder[ 0 ]
+		);
+		expect( log.mock.invocationCallOrder[ integrationCall ] ).toBeLessThan(
+			mockQuestion.mock.invocationCallOrder[ 1 ]
+		);
+	} );
+
+	it( 'uses complete flags without interactive guidance in a non-TTY shell', async () => {
+		const target = join( root, 'flag-result' );
+		const log = jest.spyOn( console, 'log' ).mockImplementation();
+		Object.defineProperty( process.stdin, 'isTTY', { configurable: true, value: false } );
+
+		await initCommand( { vendor: 'Acme', name: 'Content Sync', dir: target } );
+
+		const output = stripVTControlCharacters( log.mock.calls.flat().join( '\n' ) );
+		expect( mockQuestion ).not.toHaveBeenCalled();
+		expect( output ).not.toContain( 'Welcome to vip-integration init' );
+		expect( output ).not.toContain( 'package vendor and PHP namespace prefix' );
+		expect( output ).not.toContain( 'default directory' );
+		expect( output ).toContain( 'Created ContentSync integration' );
+		expect( output ).toContain(
+			'Follow the Runtime Config section in docs/vip-integration.md to learn how to use your runtime config (VIP_CONTENT_SYNC_CONFIG) and complete the integration.'
+		);
+		expect( output ).toContain(
+			'Follow docs/manifest.md to configure vip-manifest.yaml, which is required before submitting the integration.'
+		);
+		expect( output ).toContain(
+			'Edit the integration, then run vip-integration validate in the integration folder to check whether it is ready to submit.'
+		);
+		expect( existsSync( join( target, 'README.md' ) ) ).toBe( true );
+		expect( existsSync( join( target, '.git' ) ) ).toBe( false );
+	} );
+
+	it( 'rejects a missing non-interactive answer without writing the target', async () => {
+		const target = join( root, 'missing-answer' );
+		const log = jest.spyOn( console, 'log' ).mockImplementation();
+		Object.defineProperty( process.stdin, 'isTTY', { configurable: true, value: false } );
+
+		await expect( initCommand( { vendor: 'Acme', dir: target } ) ).rejects.toThrow(
+			'Missing Integration name'
+		);
+
+		expect( log ).not.toHaveBeenCalled();
+		expect( mockQuestion ).not.toHaveBeenCalled();
+		expect( existsSync( target ) ).toBe( false );
+	} );
+
+	it( 'rejects invalid flag values before writing the target', async () => {
+		const target = join( root, 'invalid-name' );
+		Object.defineProperty( process.stdin, 'isTTY', { configurable: true, value: false } );
+
+		await expect(
+			initCommand( { vendor: 'Acme', name: '123 demo', dir: target } )
+		).rejects.toThrow( 'valid PHP namespace' );
+
+		expect( existsSync( target ) ).toBe( false );
 	} );
 } );

@@ -89,10 +89,31 @@ async function prompt( label: string ): Promise< string > {
 	}
 }
 
+function hasInput( value: string | undefined ): value is string {
+	return typeof value === 'string' && value.trim() !== '';
+}
+
+function printInteractiveWelcome(): void {
+	console.log( bold( 'Welcome to vip-integration init' ) );
+	console.log(
+		gray(
+			[
+				'This creates a new Integration Center add-on from the latest released VIP Integrations Starter Kit.',
+				'It personalizes identifiers from your answers, writes to a new or empty target directory,',
+				'and leaves a plain directory without the Starter Kit Git history.',
+			].join( '\n' )
+		)
+	);
+}
+
 /** Resolve a required input from a flag or an interactive prompt. Errors in a
  * non-interactive shell instead of hanging on a prompt nobody can answer. */
-async function resolveInput( label: string, provided: string | undefined ): Promise< string > {
-	if ( typeof provided === 'string' && provided.trim() !== '' ) {
+async function resolveInput(
+	label: string,
+	provided: string | undefined,
+	context: string
+): Promise< string > {
+	if ( hasInput( provided ) ) {
 		return provided.trim();
 	}
 	if ( ! process.stdin.isTTY ) {
@@ -100,6 +121,8 @@ async function resolveInput( label: string, provided: string | undefined ): Prom
 			`Missing ${ label }. Pass it as a flag (e.g. --vendor, --name) when running non-interactively.`
 		);
 	}
+	console.log( `\n${ bold( label.split( ' (' )[ 0 ] ) }` );
+	console.log( gray( `  ${ context }` ) );
 	return prompt( label );
 }
 
@@ -143,8 +166,21 @@ function laySkeleton( target: string, source: string, ref: string | undefined ):
 }
 
 export async function initCommand( opts: InitOptions = {} ): Promise< void > {
-	const vendor = await resolveInput( 'Vendor name (e.g. "WordPress")', opts.vendor );
-	const name = await resolveInput( 'Integration name (e.g. "Content Sync")', opts.name );
+	const needsPrompt = ! hasInput( opts.vendor ) || ! hasInput( opts.name );
+	if ( needsPrompt && process.stdin.isTTY ) {
+		printInteractiveWelcome();
+	}
+
+	const vendor = await resolveInput(
+		'Vendor name (e.g. "WordPress")',
+		opts.vendor,
+		'Use the company or team that owns the integration, such as "Acme". This sets the package vendor and PHP namespace prefix.'
+	);
+	const name = await resolveInput(
+		'Integration name (e.g. "Content Sync")',
+		opts.name,
+		'Use the product or add-on name. This sets the package name, namespace, code prefixes, slug, config constant, and default directory.'
+	);
 
 	// Validate the names before touching the filesystem, so bad input fails fast
 	// instead of leaving a half-laid-down directory behind.
@@ -194,10 +230,20 @@ export async function initCommand( opts: InitOptions = {} ): Promise< void > {
 
 	console.log( bold( '\nNext steps:' ) );
 	for ( const step of [
-		`cd ${ target }`,
-		'composer install && npm install',
-		'Run it locally: vip dev-env create && vip dev-env start',
-		'Edit the integration, then run: vip-integration validate',
+		cyan( `cd ${ target }` ),
+		cyan( 'composer install && npm install' ),
+		`Follow the Runtime Config section in ${ cyan(
+			'docs/vip-integration.md'
+		) } to learn how to use your runtime config (${
+			prefix.configConstant
+		}) and complete the integration.`,
+		`Follow ${ cyan(
+			'docs/manifest.md'
+		) } to configure vip-manifest.yaml, which is required before submitting the integration.`,
+		`Run it locally: ${ cyan( 'vip dev-env create && vip dev-env start' ) }`,
+		`Edit the integration, then run ${ cyan(
+			'vip-integration validate'
+		) } in the integration folder to check whether it is ready to submit.`,
 	] ) {
 		console.log( `  ${ cyan( '→' ) } ${ step }` );
 	}
